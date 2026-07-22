@@ -138,10 +138,30 @@ def handle_questions(page, registry):
         q_text = label.inner_text().strip() if label else ""
         if q_text in registry:
             ans = str(registry[q_text])
-            if field.get_attribute('type') == 'number':
-                # Strip everything except digits and a single decimal point
-                ans = re.sub(r'[^\d.]', '', ans)
-                if not ans: ans = "0"
+            
+            # Numeric intent detection based on label or input type
+            is_numeric = (field.get_attribute('type') == 'number' or 
+                         any(term in q_text.lower() for term in ["years", "ctc", "exp", "notice", "days", "months"]))
+            
+            if is_numeric:
+                clean_ans = re.sub(r'[^\d.]', '', ans)
+                # If cleaning makes it empty or just a dot, or we have "10.5 LPA" -> "10.5"
+                if not clean_ans or clean_ans == ".":
+                    clean_ans = "4"
+                
+                # Special case: float validation (larger than 0.0)
+                try:
+                    if float(clean_ans) <= 0:
+                        clean_ans = "4"
+                except:
+                    clean_ans = "4"
+                
+                ans = clean_ans
+
+            print(f"    📝 Filling: '{q_text}' -> '{ans}'")
+            field.click() # Focus
+            page.keyboard.press("Control+A") # Select all
+            page.keyboard.press("Backspace") # Clear
             field.fill(ans)
             time.sleep(0.5)
             # Attempt to click autocomplete suggestions (Mandatory for LinkedIn Location fields)
@@ -177,23 +197,34 @@ def handle_questions(page, registry):
                             lbl.click()
                             break
 
-def take_screenshot(page, company_name, error_type):
-    """Saves a timestamped screenshot to logs/screenshots/ for debugging."""
+def take_screenshot(page, company_name, error_type, debug_mode=False):
+    """Saves a timestamped screenshot and DOM to logs/screenshots/ for debugging."""
     try:
         now = datetime.now()
         ss_dir = os.path.join(BASE_DIR, 'logs', 'screenshots', now.strftime("%Y"), now.strftime("%m"), now.strftime("%d"))
         os.makedirs(ss_dir, exist_ok=True)
         
         safe_company = re.sub(r'[^\w\s-]', '', company_name).strip().replace(' ', '_')
-        filename = f"{now.strftime('%H-%M-%S')}_{safe_company}_{error_type}.png"
-        path = os.path.join(ss_dir, filename)
+        timestamp = now.strftime('%H-%M-%S')
         
-        page.screenshot(path=path)
-        print(f"    📸 Screenshot saved: logs/screenshots/.../{filename}")
+        # Save Screenshot
+        png_filename = f"{timestamp}_linkedin_{safe_company}_{error_type}.png"
+        png_path = os.path.join(ss_dir, png_filename)
+        page.screenshot(path=png_path)
+        
+        # Save DOM
+        html_filename = f"{timestamp}_linkedin_{safe_company}_{error_type}.html"
+        html_path = os.path.join(ss_dir, html_filename)
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(page.content())
+            
+        print(f"    📸 Evidence saved: {png_filename} and {html_filename}")
+        return png_path, html_path
     except Exception as e:
         print(f"    ⚠️ Failed to take screenshot: {e}")
+        return None, None
 
-def linkedin_apply(matched_path=MATCHED_PATH):
+def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
     if not os.path.exists(REGISTRY_PATH): return
     with open(REGISTRY_PATH, 'r') as f: registry = json.load(f)
     if not os.path.exists(matched_path): return
@@ -221,7 +252,7 @@ def linkedin_apply(matched_path=MATCHED_PATH):
                 page.goto(job['url'], wait_until="domcontentloaded")
             except Exception as e:
                 print(f"  ⚠️ Navigation failed: {e}")
-                take_screenshot(page, company_name, "navigation_failed")
+                if debug_mode: take_screenshot(page, company_name, "navigation_failed", debug_mode)
                 continue
             
             time.sleep(random.uniform(2, 4))
@@ -276,7 +307,10 @@ def linkedin_apply(matched_path=MATCHED_PATH):
 
             if not button_clicked:
                 print(f"  ❌ Easy Apply button genuinely not found. Moving on.")
-                take_screenshot(page, company_name, "no_apply_button")
+                if debug_mode: 
+                    png, html = take_screenshot(page, company_name, "no_apply_button", debug_mode)
+                    job['debug_screenshot'] = png
+                    job['debug_dom'] = html
                 continue
 
             # Wait for the modal to actually appear before starting the interaction loop
@@ -284,7 +318,10 @@ def linkedin_apply(matched_path=MATCHED_PATH):
                 page.locator(".artdeco-modal").first.wait_for(state="visible", timeout=12000)
             except Exception:
                 print("  ⚠️ Modal did not appear (might be an external redirect or slow connection). Skipping.")
-                take_screenshot(page, company_name, "modal_timeout")
+                if debug_mode: 
+                    png, html = take_screenshot(page, company_name, "modal_timeout", debug_mode)
+                    job['debug_screenshot'] = png
+                    job['debug_dom'] = html
                 continue
 
             for loop_count in range(10):
@@ -294,7 +331,7 @@ def linkedin_apply(matched_path=MATCHED_PATH):
                 if not modal.is_visible():
                     if loop_count > 0:
                         print("  ⚠️ Modal closed unexpectedly.")
-                        take_screenshot(page, company_name, "modal_closed_early")
+                        if debug_mode: take_screenshot(page, company_name, "modal_closed_early", debug_mode)
                     break
                     
                 handle_questions(page, registry)
@@ -309,9 +346,30 @@ def linkedin_apply(matched_path=MATCHED_PATH):
                         except Exception as e: 
                             pass
                 
-                if modal.locator(".artdeco-inline-feedback--error").count() > 0:
+                errors = modal.locator(".artdeco-inline-feedback--error")
+                if errors.count() > 0:
+                    error_text = errors.first.inner_text().strip()
+                    print(f"  ⚠️ Form validation error detected: {error_text}")
+                    
+                    # Attempt a surgical fix for the most common numeric error
+                    if "numeric" in error_text.lower() or "number" in error_text.lower():
+                        error_field = page.locator(".artdeco-inline-feedback--error").locator("xpath=./preceding-sibling::*[self::input or self::textarea]").last
+                        if error_field.count() > 0:
+                            current_val = error_field.input_value()
+                            clean_val = re.sub(r'[^\d.]', '', current_val)
+                            if clean_val and clean_val != current_val:
+                                print(f"    🔧 Attempting to fix numeric field: {current_val} -> {clean_val}")
+                                error_field.fill(clean_val)
+                                time.sleep(1)
+                                if modal.locator(".artdeco-inline-feedback--error").count() == 0:
+                                    print("    ✅ Error cleared after numeric fix.")
+                                    continue # Retry the loop for this step
+
                     print("  ⚠️ Form validation failing. Skipping job to avoid infinite loop.")
-                    take_screenshot(page, company_name, "form_validation_error")
+                    if debug_mode: 
+                        png, html = take_screenshot(page, company_name, "form_validation_error", debug_mode)
+                        job['debug_screenshot'] = png
+                        job['debug_dom'] = html
                     break
 
                 # Scroll down the modal content to ensure Next/Submit buttons are visible
@@ -348,7 +406,10 @@ def linkedin_apply(matched_path=MATCHED_PATH):
                     print("    ➡️ Clicked 'Next'")
                 else:
                     print("  ⚠️ Could not find Next/Review/Submit buttons. Exiting modal.")
-                    take_screenshot(page, company_name, "no_modal_buttons")
+                    if debug_mode: 
+                        png, html = take_screenshot(page, company_name, "no_modal_buttons", debug_mode)
+                        job['debug_screenshot'] = png
+                        job['debug_dom'] = html
                     break
 
         browser.close()

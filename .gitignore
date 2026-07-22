@@ -1,13 +1,35 @@
-# Environments and Secrets
-.env
-
-Data & Outputs (Keep your session cookies, scraped jobs, and tailored resumes private)
-data/
-outputs/
-logs/
-*.log
-
-# Python Cache
+# Python cache and byte-compiled files
 __pycache__/
 *.pyc
-.DS_StoreJob_Applications_Tracker.csv
+*.pyo
+*.pyd
+
+# Environment variables - Contains sensitive credentials
+.env
+
+# User Layer Data (as per DATA_CONTRACT.md and README.md)
+# These directories and files contain personal data, session info, and generated output.
+/data/
+/outputs/
+/logs/
+/Job_Applications_Tracker.csv
+
+# Session files that might be created by automation scripts
+*_session.json
+
+# Common document formats that might contain personal resume data
+*.docx
+*.doc
+*.pdf
+
+# Temporary or run-specific files
+last_run.md
+
+# IDE / Editor specific settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS specific files
+.DS_Store

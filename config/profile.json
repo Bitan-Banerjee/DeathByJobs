@@ -8,6 +8,7 @@
     "DB1: Job strictly requires MORE than 5 years of experience (e.g., '6-10 Years'). Do not confuse company/founder experience with job requirements.",
     "DB2: Job requires the candidate to design, train, or build AI/ML models or perform advanced Statistical/Mathematical modeling. (NOTE: Building data pipelines, cleaning data, or writing ETL workflows to support AI teams is a PERFECT match and should NOT be rejected).",
     "DB3: Job requires Azure or GCP, but does NOT mention AWS.",
-    "DB4: The hiring company is Deloitte (current employer). Reject immediately."
+    "DB4: The hiring company is Deloitte (current employer). Reject immediately.",
+    "DB5: The hiring company is Turing. Reject immediately as it provides freelance offerings, not full-time."
   ]
 }

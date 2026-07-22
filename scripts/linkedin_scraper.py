@@ -132,6 +132,34 @@ def scrape_linkedin_jobs(keyword, location, max_pages, max_jobs, output_file=JOB
             human_delay(3, 5)
             slow_scroll(page)
             
+            # --- BROWSER LEVEL FILTERING ---
+            print("🪄 Applying browser-level filters (DOM removal)...")
+            page.evaluate("""() => {
+                const filters = ["Senior", "Lead", "Manager", "Director", "VP", "Principal"];
+                const excludedCompanies = ["Turing"];
+                const selectors = [".job-card-container", ".jobs-search-results-list__item", ".base-card", ".base-search-card", ".jobs-search-results__list-item"];
+                
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(card => {
+                        const text = card.innerText;
+                        const hasFlag = filters.some(f => {
+                            const regex = new RegExp('\\\\b' + f + '\\\\b', 'i');
+                            return regex.test(text);
+                        });
+                        
+                        const isExcludedCompany = excludedCompanies.some(c => {
+                            const regex = new RegExp('\\\\b' + c + '\\\\b', 'i');
+                            return regex.test(text);
+                        });
+                        
+                        if (hasFlag || isExcludedCompany || text.includes('Applied') || text.includes('Applied ')) {
+                            card.remove();
+                        }
+                    });
+                });
+            }""")
+            # -------------------------------
+
             cards = page.locator(".job-card-container")
             card_count = cards.count()
             print(f"    🔍 Found {card_count} job cards on this page.")
@@ -155,6 +183,10 @@ def scrape_linkedin_jobs(keyword, location, max_pages, max_jobs, output_file=JOB
                         
                     subtitle = card.locator(".artdeco-entity-lockup__subtitle").first
                     company = subtitle.inner_text().split('\n')[0].strip() if subtitle.is_visible() else "Unknown"
+                    
+                    if company.lower() == "turing":
+                        print(f"  ⏭️ Skipped (Excluded Company): {company}")
+                        continue
                     
                     href = title_el.get_attribute("href")
                     if not href: continue

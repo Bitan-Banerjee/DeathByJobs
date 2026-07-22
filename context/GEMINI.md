@@ -73,7 +73,8 @@ Iterated for Speed, Accuracy, Cost.
 8. **Naukri Integration:** `naukri_scraper.py`, `naukri_auto_apply.py`.
 9. **Multi-Key Router:** Gemini API key fallback.
 10. **Static Logger:** `latest_run.md`.
-11. **Early Rejection:** Reject score < 80 in Stage 2.
+11. Early Rejection: Reject score < 80 in Stage 2.
+12. Freelance Exclusion: Explicitly skip 'Turing' (pre-filter and DB5) as it is freelance-only.
 
 ## 📜 Core Mandates
 - **Approval:** technical strategy + user approval before ANY file changes.

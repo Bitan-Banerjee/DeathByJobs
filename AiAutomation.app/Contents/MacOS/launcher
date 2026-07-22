@@ -1,0 +1,4 @@
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation"
+exec arch -arm64 /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12 "$SCRIPT_DIR/app.py"

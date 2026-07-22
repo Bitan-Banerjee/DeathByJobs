@@ -19,8 +19,13 @@ PROFILE_PATH = os.path.join(BASE_DIR, 'config', 'profile.json')
 BATCH_SIZE = 10  # Balanced for Gemini Flash to handle reasoning tokens safely
 DELAY_BETWEEN_BATCHES = 15  # 15 seconds delay to stay safely under the 5 RPM limit
 
-def passes_basic_filter(title):
+def passes_basic_filter(title, company):
     title_lower = title.lower()
+    company_lower = company.lower()
+    
+    if 'turing' in company_lower:
+        return False
+
     red_flags = ['director', 'manager', 'vp', 'lead', 'head']
     for flag in red_flags:
         if flag in title_lower.split():
@@ -135,7 +140,7 @@ def match_jobs_batched(scraped_path=SCRAPED_PATH, matched_path=MATCHED_PATH):
         return
         
     # Pre-filter to save API calls
-    valid_jobs = [j for j in jobs if passes_basic_filter(j.get('title', ''))]
+    valid_jobs = [j for j in jobs if passes_basic_filter(j.get('title', ''), j.get('company', ''))]
     
     print(f"🔍 Evaluating {len(valid_jobs)} jobs using Gemini Batched API (Batch Size: {BATCH_SIZE})...")
     approved_jobs = []

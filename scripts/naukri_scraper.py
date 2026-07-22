@@ -88,6 +88,20 @@ def scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=25, o
             safe_goto(page, url)
             human_delay(3, 5)
             
+            # --- BROWSER LEVEL FILTERING ---
+            print("🪄 Applying browser-level filters (DOM removal)...")
+            page.evaluate("""() => {
+                const filters = ["Applied", "Walk-in", "Sponsored", "Premium", "Lead", "Manager", "Director"];
+                const cards = document.querySelectorAll('.srp-jobtuple-wrapper');
+                cards.forEach(card => {
+                    const text = card.innerText;
+                    if (filters.some(f => text.includes(f))) {
+                        card.remove();
+                    }
+                });
+            }""")
+            # -------------------------------
+
             cards = page.locator(".srp-jobtuple-wrapper")
             card_count = cards.count()
             print(f"    🔍 Found {card_count} job cards on this page.")

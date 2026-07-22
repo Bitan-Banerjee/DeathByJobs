@@ -43,7 +43,7 @@ def save_registry(registry):
     with open(REGISTRY_PATH, 'w') as f: json.dump(registry, f, indent=4)
 
 
-def take_screenshot(page, company_name, error_type):
+def take_screenshot(page, company_name, error_type, debug_mode=False):
     """Saves a timestamped screenshot and matching HTML snapshot to logs/screenshots/."""
     try:
         now = datetime.now()
@@ -65,8 +65,10 @@ def take_screenshot(page, company_name, error_type):
             f.write(page.content())
             
         print(f"    📸 Evidence saved: {png_filename} and {html_filename}")
+        return png_path, html_path
     except Exception as e:
         print(f"    ⚠️ Failed to save evidence: {e}")
+        return None, None
 
 
 def is_login_page(page):
@@ -384,7 +386,7 @@ def save_behavior(behavior):
     with open(COMPANY_BEHAVIOR_FILE, 'w') as f: json.dump(behavior, f, indent=4)
 
 
-def naukri_apply(matched_path=MATCHED_PATH):
+def naukri_apply(matched_path=MATCHED_PATH, debug_mode=False):
     if not os.path.exists(matched_path): 
         print(f"❌ Matched path not found: {matched_path}")
         return
@@ -448,7 +450,7 @@ def naukri_apply(matched_path=MATCHED_PATH):
                             print("  ⚠️ Job has expired."); job['status'] = 'expired'
                         else:
                             print("  ❌ Apply button missing."); job['status'] = 'skipped_no_apply_btn'
-                            take_screenshot(page, company_name, "no_apply_btn")
+                            if debug_mode: take_screenshot(page, company_name, "no_apply_btn", debug_mode)
                     else:
                         print("  🔘 Clicking Apply...")
                         try:
@@ -472,7 +474,7 @@ def naukri_apply(matched_path=MATCHED_PATH):
                         
                         if check_for_errors(page):
                             print("    ❌ Application blocked by system error.")
-                            take_screenshot(page, company_name, "system_error")
+                            if debug_mode: take_screenshot(page, company_name, "system_error", debug_mode)
                             job['status'] = 'failed_system_error'
                             continue
 
@@ -500,7 +502,7 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                 continue
                             else:
                                 print("  ⚠️ Drawer didn't open. Retrying click...")
-                                take_screenshot(page, company_name, "no_drawer_retry_1")
+                                if debug_mode: take_screenshot(page, company_name, "no_drawer_retry_1", debug_mode)
                                 try:
                                     page.evaluate("(el) => { if(el) el.click(); }", apply_btn.element_handle())
                                 except: pass
@@ -521,7 +523,10 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                         else:
                                             print("  ❌ Failed: Drawer didn't open and success not detected.")
                                             job['status'] = 'failed_no_drawer'
-                                            take_screenshot(page, company_name, "no_drawer_final")
+                                            if debug_mode: 
+                                                png, html = take_screenshot(page, company_name, "no_drawer_final", debug_mode)
+                                                job['debug_screenshot'] = png
+                                                job['debug_dom'] = html
                                             # DUMP FULL DOM FOR ANALYSIS
                                             try:
                                                 with open(os.path.join(BASE_DIR, 'logs', f"debug_{company_name}_FAILED_DOM.html"), "w") as f:
@@ -548,7 +553,7 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                     save_behavior(behavior)
                                 else:
                                     print("  ❌ Form vanished but success NOT confirmed."); job['status'] = 'failed_vanished'
-                                    take_screenshot(page, company_name, "vanished_fail")
+                                    if debug_mode: take_screenshot(page, company_name, "vanished_fail", debug_mode)
                                 break
 
                             questions = extract_questions(page)
@@ -560,7 +565,7 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                         print("  ✅ Success!"); job['status'] = 'applied'; break
                                     else:
                                         print("  ⚠️ Form present but no questions extracted."); job['status'] = 'failed_no_questions'
-                                        take_screenshot(page, company_name, "no_questions")
+                                        if debug_mode: take_screenshot(page, company_name, "no_questions", debug_mode)
                                         break
 
                             current_q = questions[0]['question']
@@ -569,7 +574,10 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                 if stuck_count >= 3:
                                     print(f"  🛑 Stuck on same question for 3 rounds: {current_q[:50]}...")
                                     job['status'] = 'failed_stuck'
-                                    take_screenshot(page, company_name, "stuck_on_question")
+                                    if debug_mode: 
+                                        png, html = take_screenshot(page, company_name, "stuck_on_question", debug_mode)
+                                        job['debug_screenshot'] = png
+                                        job['debug_dom'] = html
                                     break
                             else:
                                 last_question = current_q
@@ -577,17 +585,17 @@ def naukri_apply(matched_path=MATCHED_PATH):
 
                             print(f"    📝 Step {round_num+1}: Found {len(questions)} question(s)")
                             # Capture evidence for every round to see the UI state
-                            take_screenshot(page, company_name, f"round_{round_num+1}_pre_answer")
+                            if debug_mode: take_screenshot(page, company_name, f"round_{round_num+1}_pre_answer", debug_mode)
                             
                             answer_questions(page, questions, registry)
                             submit_form(page)
                             
                             # Capture evidence after submit to see if it stuck
                             time.sleep(2)
-                            take_screenshot(page, company_name, f"round_{round_num+1}_post_submit")
+                            if debug_mode: take_screenshot(page, company_name, f"round_{round_num+1}_post_submit", debug_mode)
                         else:
                             print("  ⚠️ Max rounds (10) reached. Likely stuck."); job['status'] = 'skipped_too_many_rounds'
-                            take_screenshot(page, company_name, "stuck_loop")
+                            if debug_mode: take_screenshot(page, company_name, "stuck_loop", debug_mode)
 
             except Exception as e:
                 print(f"  ⚠️ Error: {str(e).split('\\n')[0]}")

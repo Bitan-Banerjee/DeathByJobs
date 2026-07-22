@@ -18,6 +18,7 @@ try:
     from match_job_gemini import match_jobs_batched
     from linkedin_auto_apply import linkedin_apply as auto_apply
     from naukri_auto_apply import naukri_apply
+    from retry_failed import retry_failed_jobs
     from tailor_resume import tailor_resumes
     from utils.export_tracker import export_to_excel
     from utils.naukri_resume_uploader import upload_resume
@@ -256,7 +257,13 @@ def run_daily_quota_loop(target_quota=50, max_loops=4, linkedin_only=False, nauk
     print("\n📥 Quarantining any remaining failed applications from the final loop...")
     quarantine_failed_jobs()
     
-    print("\n🧹 Final cleanup complete. (Retry logic decoupled. Run 'retry_failed.py' manually if needed.)")
+    print("\n🔄 Triggering Auto-Retry & Debugging for all failed jobs...")
+    try:
+        retry_failed_jobs(debug_mode=True)
+    except Exception as e:
+        print(f"⚠️ Retry failed: {e}")
+
+    print("\n🧹 Final cleanup complete.")
 
 def determine_start_stage(prefix="linkedin"):
     jobs_path = os.path.join(BASE_DIR, 'data', f'{prefix}_jobs.json')
