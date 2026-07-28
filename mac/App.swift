@@ -1321,9 +1321,10 @@ struct ModeButton: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(isSelected ? theme.bg : theme.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.horizontal, 8)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(isSelected ? theme.accent : theme.surface2)
                 .border(theme.border, width: 1)
@@ -1572,11 +1573,11 @@ struct OnboardingView: View {
                             HStack(spacing: 0) {
                                 ForEach(Array(varianceLevels.enumerated()), id: \.offset) { _, level in
                                     ModeButton(title: level.1, value: level.0, selection: $matchVariance, theme: theme)
-                                        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
+                                        .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52)
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 34)
+                            .frame(height: 52)
                         }
                     }
                 }
