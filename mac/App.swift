@@ -717,6 +717,79 @@ struct ThemedToggle: View {
     }
 }
 
+// MARK: - Custom Themed Dropdown
+
+struct ThemedDropdown: View {
+    let items: [(String, String)] // (value, label)
+    @Binding var selection: String
+    let theme: AppTheme
+
+    @State private var isOpen: Bool = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: { isOpen.toggle() }) {
+                HStack {
+                    Text(displayName)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(theme.text)
+                    Spacer()
+                    Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(theme.muted)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(theme.surface2)
+                .border(theme.border, width: 1)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(items, id: \.0) { item in
+                        Button(action: {
+                            selection = item.0
+                            isOpen = false
+                        }) {
+                            HStack {
+                                Text(item.1)
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(selection == item.0 ? theme.bg : theme.text)
+                                Spacer()
+                                if selection == item.0 {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(theme.bg)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(selection == item.0 ? theme.accent : theme.surface)
+                        }
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .overlay(
+                            Rectangle()
+                                .frame(height: 1)
+                                .foregroundColor(theme.border.opacity(0.5)),
+                            alignment: .bottom
+                        )
+                    }
+                }
+                .background(theme.surface)
+                .border(theme.border, width: 1)
+                .shadow(color: theme.text.opacity(0.15), radius: 4, x: 0, y: 3)
+            }
+        }
+    }
+
+    private var displayName: String {
+        items.first(where: { $0.0 == selection })?.1 ?? "Select"
+    }
+}
+
 // MARK: - Subviews
 
 struct LogoView: View {
@@ -1521,32 +1594,12 @@ struct OnboardingView: View {
                         sectionTitle("AI Provider")
                         VStack(alignment: .leading, spacing: 8) {
                             Text("PROVIDER").font(theme.monoSmallFont).foregroundColor(theme.muted)
-                            Menu {
-                                ForEach(providers, id: \.0) { p in
-                                    Button(action: { provider = p.0 }) {
-                                        HStack {
-                                            Text(p.1).foregroundColor(theme.text)
-                                            if provider == p.0 {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Text(providerDisplayName)
-                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(theme.text)
-                                    Spacer()
-                                    Image(systemName: "chevron.down").foregroundColor(theme.muted)
-                                }
-                                .padding(8)
-                                .frame(width: 240)
-                                .background(theme.surface2)
-                                .border(theme.border, width: 1)
-                            }
-                            .buttonStyle(.plain)
-                            .focusable(false)
+                            ThemedDropdown(
+                                items: providers,
+                                selection: $provider,
+                                theme: theme
+                            )
+                            .frame(width: 260)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
