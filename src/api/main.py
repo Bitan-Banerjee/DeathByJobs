@@ -430,7 +430,12 @@ async def get_config():
     for cfg in safe_providers.get("providers", {}).values():
         cfg.pop("api_key_env", None)
         cfg.pop("api_key", None)
-    return {"profile": profile, "providers": safe_providers}
+    return {
+        "profile": profile,
+        "providers": safe_providers,
+        "resume_path": str(get_resume_paths()[0]),
+        "base_resume_path": str(get_resume_paths()[1]),
+    }
 
 
 @app.post("/onboarding")

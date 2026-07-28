@@ -195,6 +195,62 @@ struct OnboardingPayload: Codable {
     let analogous_skills: [String: String]?
 }
 
+struct ConfigResponse: Codable {
+    let profile: ProfileConfig
+    let providers: ProvidersConfig
+}
+
+struct ProfileConfig: Codable {
+    let candidate: CandidateConfig
+    let target_profile: TargetProfileConfig
+    let search: SearchConfig
+    let filters: FiltersConfig
+    let application: ApplicationConfig
+}
+
+struct CandidateConfig: Codable {
+    let name: String
+    let email: String
+}
+
+struct TargetProfileConfig: Codable {
+    let role: String
+    let experience_years: Int
+    let experience_range: String
+    let notice_period: String
+    let serving_notice: Bool
+    let core_skills: [String]
+}
+
+struct SearchConfig: Codable {
+    let linkedin_keyword: String
+    let naukri_keyword: String
+    let location: String
+}
+
+struct FiltersConfig: Codable {
+    let match_variance: String
+    let title: TitleFiltersConfig
+    let company: CompanyFiltersConfig
+}
+
+struct TitleFiltersConfig: Codable {
+    let red_flags: [String]
+}
+
+struct CompanyFiltersConfig: Codable {
+    let excluded: [String]
+    let current_employer: String
+}
+
+struct ApplicationConfig: Codable {
+    let experience_years: Int
+}
+
+struct ProvidersConfig: Codable {
+    let active_provider: String
+}
+
 // MARK: - Backend Process Manager
 
 class BackendManager {
@@ -367,6 +423,7 @@ class PipelineViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var onboardingConfigured: Bool = true
     @Published var onboardingCheckComplete: Bool = false
+    @Published var currentConfig: ConfigResponse? = nil
 
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
@@ -393,6 +450,17 @@ class PipelineViewModel: ObservableObject {
             onboardingConfigured = true
         }
         onboardingCheckComplete = true
+    }
+
+    @MainActor
+    func loadConfig() async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/config")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            currentConfig = try JSONDecoder().decode(ConfigResponse.self, from: data)
+        } catch {
+            currentConfig = nil
+        }
     }
 
     func startPolling() {
@@ -1805,34 +1873,291 @@ struct SettingsView: View {
     @ObservedObject var viewModel: PipelineViewModel
     let theme: AppTheme
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Settings").font(theme.headingFont).foregroundColor(theme.text)
-                Text("Edit profile, provider, and resume in config/profile.json and config/providers.json.").font(theme.monoFont).foregroundColor(theme.muted)
-            }
-            .padding(.bottom, 36)
+    @State private var candidateName: String = ""
+    @State private var candidateEmail: String = ""
+    @State private var targetRole: String = ""
+    @State private var experienceYears: String = ""
+    @State private var experienceRange: String = ""
+    @State private var noticePeriod: String = ""
+    @State private var servingNotice: Bool = false
+    @State private var coreSkills: String = ""
+    @State private var linkedinKeyword: String = ""
+    @State private var naukriKeyword: String = ""
+    @State private var location: String = ""
+    @State private var matchVariance: String = "moderate"
+    @State private var titleRedFlags: String = ""
+    @State private var excludedCompanies: String = ""
+    @State private var currentEmployer: String = ""
+    @State private var provider: String = "gemini"
+    @State private var apiKey: String = ""
+    @State private var showApiKey: Bool = false
+    @State private var resumeURL: URL? = nil
+    @State private var isSaving: Bool = false
+    @State private var saveMessage: String? = nil
+    @State private var saveError: String? = nil
 
-            ThemedCard(theme: theme) {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("CONFIG FILES".uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
-                    Text("~/Coding/GitHub_Repos/AiAutomation/config/profile.json")
-                        .font(theme.monoFont)
-                        .foregroundColor(theme.accent)
-                    Text("~/Coding/GitHub_Repos/AiAutomation/config/providers.json")
-                        .font(theme.monoFont)
-                        .foregroundColor(theme.accent)
-                    Text("Restart the app after editing config files.")
-                        .font(theme.monoFont)
-                        .foregroundColor(theme.muted)
+    private let providers = [
+        ("gemini", "Google Gemini"),
+        ("openai", "OpenAI"),
+        ("anthropic", "Anthropic Claude"),
+        ("local", "Local / Ollama")
+    ]
+
+    private let varianceLevels = [
+        ("strict", "Strict — exact tools only"),
+        ("moderate", "Moderate — allow similar tools"),
+        ("loose", "Loose — broad domain match")
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Settings").font(theme.headingFont).foregroundColor(theme.text)
+                    Text("Edit your profile, provider, and filters at any time.").font(theme.monoFont).foregroundColor(theme.muted)
                 }
+                .padding(.bottom, 32)
+
+                if let error = saveError {
+                    ThemedCard(theme: theme, borderColor: theme.errorRed) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(theme.errorRed)
+                            Text(error).font(theme.monoFont).foregroundColor(theme.errorRed)
+                            Spacer()
+                        }
+                    }
+                    .padding(.bottom, 20)
+                }
+
+                if let message = saveMessage {
+                    ThemedCard(theme: theme, borderColor: theme.accent) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill").foregroundColor(theme.accent)
+                            Text(message).font(theme.monoFont).foregroundColor(theme.accent)
+                            Spacer()
+                        }
+                    }
+                    .padding(.bottom, 20)
+                }
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Candidate")
+                        HStack(spacing: 14) {
+                            labeledTextField("Full Name", text: $candidateName)
+                            labeledTextField("Email", text: $candidateEmail)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Experience Years", text: $experienceYears, width: 120)
+                            labeledTextField("Open to Roles", text: $experienceRange, placeholder: "e.g. 0 to 5 years")
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Notice Period", text: $noticePeriod, width: 140)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("SERVING NOTICE").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                                ThemedToggle(isOn: $servingNotice, theme: theme)
+                            }
+                        }
+                        labeledTextField("Core Skills (comma separated)", text: $coreSkills)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Target Job")
+                        HStack(spacing: 14) {
+                            labeledTextField("Target Role", text: $targetRole)
+                            labeledTextField("Location", text: $location, width: 150)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("LinkedIn Keyword", text: $linkedinKeyword)
+                            labeledTextField("Naukri Keyword", text: $naukriKeyword)
+                        }
+
+                        labeledTextField("Titles/Roles to Avoid (comma separated)", text: $titleRedFlags)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            HStack(spacing: 0) {
+                                ForEach(Array(varianceLevels.enumerated()), id: \.offset) { _, level in
+                                    ModeButton(title: level.1, value: level.0, selection: $matchVariance, theme: theme)
+                                        .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                        }
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Company Filters")
+                        labeledTextField("Current Employer", text: $currentEmployer)
+                        labeledTextField("Excluded Companies (comma separated)", text: $excludedCompanies)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("AI Provider")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("PROVIDER").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            ThemedDropdown(
+                                items: providers,
+                                selection: $provider,
+                                theme: theme
+                            )
+                            .frame(width: 260)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("API KEY").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            HStack(spacing: 0) {
+                                ZStack(alignment: .leading) {
+                                    if apiKey.isEmpty {
+                                        Text("Paste your API key here")
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(theme.muted)
+                                            .padding(.leading, 8)
+                                            .allowsHitTesting(false)
+                                    }
+                                    Group {
+                                        if showApiKey {
+                                            TextField("", text: $apiKey)
+                                        } else {
+                                            SecureField("", text: $apiKey)
+                                        }
+                                    }
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .textFieldStyle(.plain)
+                                    .padding(.leading, 8)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                                Button(action: { showApiKey.toggle() }) {
+                                    Image(systemName: showApiKey ? "eye.slash" : "eye")
+                                        .foregroundColor(theme.muted)
+                                }
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .padding(.trailing, 8)
+                            }
+                            .background(theme.surface2)
+                            .border(theme.border, width: 1)
+                            .frame(height: 34)
+                        }
+                    }
+                }
+                .padding(.bottom, 20)
+
+                HStack {
+                    Spacer()
+                    Button(action: saveSettings) {
+                        HStack(spacing: 8) {
+                            if isSaving { ProgressView().scaleEffect(0.7).tint(theme.bg) }
+                            Text(isSaving ? "Saving…" : "Save Changes")
+                        }
+                    }
+                    .buttonStyle(ThemedButtonStyle(variant: .accent, theme: theme, isDisabled: isSaving))
+                    .disabled(isSaving)
+                    .focusable(false)
+                }
+                .padding(.bottom, 40)
+            }
+            .padding(40)
+            .frame(maxWidth: 700, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.bg)
+        .task {
+            await viewModel.loadConfig()
+            populateFromConfig()
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .tracking(1.2)
+            .foregroundColor(theme.muted)
+    }
+
+    private func labeledTextField(_ label: String, text: Binding<String>, placeholder: String = "", width: CGFloat? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+            TextField(placeholder, text: text)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(theme.text)
+                .frame(width: width)
+                .padding(8)
+                .background(theme.surface2)
+                .border(theme.border, width: 1)
+                .textFieldStyle(.plain)
+        }
+    }
+
+    private func populateFromConfig() {
+        guard let config = viewModel.currentConfig else { return }
+        candidateName = config.profile.candidate.name
+        candidateEmail = config.profile.candidate.email
+        targetRole = config.profile.target_profile.role
+        experienceYears = String(config.profile.target_profile.experience_years)
+        experienceRange = config.profile.target_profile.experience_range
+        noticePeriod = config.profile.target_profile.notice_period
+        servingNotice = config.profile.target_profile.serving_notice
+        coreSkills = config.profile.target_profile.core_skills.joined(separator: ", ")
+        linkedinKeyword = config.profile.search.linkedin_keyword
+        naukriKeyword = config.profile.search.naukri_keyword
+        location = config.profile.search.location
+        matchVariance = config.profile.filters.match_variance
+        titleRedFlags = config.profile.filters.title.red_flags.joined(separator: ", ")
+        excludedCompanies = config.profile.filters.company.excluded.filter { $0.lowercased() != config.profile.filters.company.current_employer.lowercased() }.joined(separator: ", ")
+        currentEmployer = config.profile.filters.company.current_employer
+        provider = config.providers.active_provider
+    }
+
+    private func saveSettings() {
+        isSaving = true
+        saveError = nil
+        saveMessage = nil
+
+        let payload = OnboardingPayload(
+            candidate_name: candidateName,
+            candidate_email: candidateEmail,
+            target_role: targetRole,
+            experience_years: Int(experienceYears) ?? 4,
+            experience_range: experienceRange,
+            notice_period: noticePeriod,
+            serving_notice: servingNotice,
+            core_skills: coreSkills.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            linkedin_keyword: linkedinKeyword,
+            naukri_keyword: naukriKeyword,
+            location: location,
+            match_variance: matchVariance,
+            title_red_flags: titleRedFlags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            excluded_companies: excludedCompanies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            current_employer: currentEmployer,
+            provider: provider,
+            api_key: apiKey,
+            analogous_skills: nil
+        )
+
+        viewModel.submitOnboarding(payload) { success, error in
+            self.isSaving = false
+            if success {
+                self.saveMessage = "Settings saved. Changes take effect on the next pipeline run."
+            } else {
+                self.saveError = error ?? "Failed to save settings"
             }
         }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(theme.bg)
     }
 }
+
 
 // MARK: - Main App Structure
 
