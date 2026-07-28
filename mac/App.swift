@@ -858,6 +858,84 @@ struct ThemedDropdown: View {
     }
 }
 
+// MARK: - Tag Input Field
+
+struct TagInputField: View {
+    let label: String
+    @Binding var commaSeparatedText: String
+    let theme: AppTheme
+    @State private var newTag: String = ""
+
+    private var tags: [String] {
+        commaSeparatedText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 90), spacing: 6)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+
+            if !tags.isEmpty {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+                    ForEach(tags, id: \.self) { tag in
+                        HStack(spacing: 4) {
+                            Text(tag)
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .lineLimit(1)
+                            Button(action: { removeTag(tag) }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(theme.muted)
+                            }
+                            .buttonStyle(.plain)
+                            .focusable(false)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(theme.surface2)
+                        .border(theme.border, width: 1)
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                TextField("Type and press Add", text: $newTag)
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(theme.text)
+                    .textFieldStyle(.plain)
+                    .padding(8)
+                    .background(theme.surface2)
+                    .border(theme.border, width: 1)
+                    .onSubmit { addTag() }
+
+                Button("Add") { addTag() }
+                    .buttonStyle(ThemedButtonStyle(variant: .saveSmall, theme: theme, isDisabled: newTag.trimmingCharacters(in: .whitespaces).isEmpty))
+                    .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .focusable(false)
+            }
+        }
+    }
+
+    private func addTag() {
+        let trimmed = newTag.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        var current = tags
+        if !current.contains(trimmed) {
+            current.append(trimmed)
+            commaSeparatedText = current.joined(separator: ", ")
+        }
+        newTag = ""
+    }
+
+    private func removeTag(_ tag: String) {
+        var current = tags
+        current.removeAll { $0 == tag }
+        commaSeparatedText = current.joined(separator: ", ")
+    }
+}
+
 // MARK: - Subviews
 
 struct LogoView: View {
@@ -1623,7 +1701,7 @@ struct OnboardingView: View {
                                 ThemedToggle(isOn: $servingNotice, theme: theme)
                             }
                         }
-                        labeledTextField("Core Skills (comma separated)", text: $coreSkills)
+                        TagInputField(label: "Core Skills", commaSeparatedText: $coreSkills, theme: theme)
                     }
                 }
                 .padding(.bottom, 20)
@@ -1640,7 +1718,7 @@ struct OnboardingView: View {
                             labeledTextField("Naukri Keyword", text: $naukriKeyword)
                         }
 
-                        labeledTextField("Titles/Roles to Avoid (comma separated)", text: $titleRedFlags)
+                        TagInputField(label: "Titles/Roles to Avoid", commaSeparatedText: $titleRedFlags, theme: theme)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
@@ -1963,7 +2041,7 @@ struct SettingsView: View {
                                 ThemedToggle(isOn: $servingNotice, theme: theme)
                             }
                         }
-                        labeledTextField("Core Skills (comma separated)", text: $coreSkills)
+                        TagInputField(label: "Core Skills", commaSeparatedText: $coreSkills, theme: theme)
                     }
                 }
                 .padding(.bottom, 20)
@@ -1980,7 +2058,7 @@ struct SettingsView: View {
                             labeledTextField("Naukri Keyword", text: $naukriKeyword)
                         }
 
-                        labeledTextField("Titles/Roles to Avoid (comma separated)", text: $titleRedFlags)
+                        TagInputField(label: "Titles/Roles to Avoid", commaSeparatedText: $titleRedFlags, theme: theme)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
