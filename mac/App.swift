@@ -1469,6 +1469,7 @@ struct LogsView: View {
 
 struct OnboardingView: View {
     @ObservedObject var viewModel: PipelineViewModel
+    @Binding var isPresented: Bool
     let theme: AppTheme
 
     @State private var candidateName: String = ""
@@ -1791,6 +1792,7 @@ struct OnboardingView: View {
 
                     // 4. Close onboarding and land on dashboard.
                     self.viewModel.onboardingConfigured = true
+                    self.isPresented = false
                 }
             }
         }
@@ -1883,14 +1885,16 @@ struct ContentView: View {
         }
         .frame(minWidth: 900, minHeight: 650)
         .sheet(isPresented: $showOnboardingSheet) {
-            OnboardingView(viewModel: viewModel, theme: theme)
+            OnboardingView(viewModel: viewModel, isPresented: $showOnboardingSheet, theme: theme)
         }
         .task {
             await viewModel.prepareBackend()
             presentOnboardingIfNeeded()
         }
         .onChange(of: viewModel.onboardingConfigured) { _, _ in
-            presentOnboardingIfNeeded()
+            if viewModel.onboardingCheckComplete && !viewModel.onboardingConfigured {
+                showOnboardingSheet = true
+            }
         }
     }
 
