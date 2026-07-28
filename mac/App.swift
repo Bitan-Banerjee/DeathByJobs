@@ -901,14 +901,25 @@ struct TagInputField: View {
             }
 
             HStack(spacing: 6) {
-                TextField("Type and press Add", text: $newTag)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(theme.text)
-                    .textFieldStyle(.plain)
-                    .padding(8)
-                    .background(theme.surface2)
-                    .border(theme.border, width: 1)
-                    .onSubmit { addTag() }
+                ZStack(alignment: .leading) {
+                    if newTag.isEmpty {
+                        Text("Type and press Add")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(theme.muted)
+                            .padding(.leading, 8)
+                            .allowsHitTesting(false)
+                    }
+                    TextField("", text: $newTag)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(theme.text)
+                        .textFieldStyle(.plain)
+                        .padding(.leading, 8)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+                .background(theme.surface2)
+                .border(theme.border, width: 1)
+                .onSubmit { addTag() }
 
                 Button("Add") { addTag() }
                     .buttonStyle(ThemedButtonStyle(variant: .saveSmall, theme: theme, isDisabled: newTag.trimmingCharacters(in: .whitespaces).isEmpty))
