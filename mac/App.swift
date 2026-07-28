@@ -1319,11 +1319,12 @@ struct ModeButton: View {
     var body: some View {
         Button(action: { selection = value }) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(isSelected ? theme.bg : theme.text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(isSelected ? theme.accent : theme.surface2)
                 .border(theme.border, width: 1)
         }
@@ -1571,10 +1572,11 @@ struct OnboardingView: View {
                             HStack(spacing: 0) {
                                 ForEach(Array(varianceLevels.enumerated()), id: \.offset) { _, level in
                                     ModeButton(title: level.1, value: level.0, selection: $matchVariance, theme: theme)
-                                        .frame(maxWidth: .infinity)
+                                        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
                                 }
                             }
                             .frame(maxWidth: .infinity)
+                            .frame(height: 34)
                         }
                     }
                 }
@@ -1605,17 +1607,27 @@ struct OnboardingView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("API KEY").font(theme.monoSmallFont).foregroundColor(theme.muted)
                             HStack(spacing: 0) {
-                                Group {
-                                    if showApiKey {
-                                        TextField("API Key", text: $apiKey)
-                                    } else {
-                                        SecureField("API Key", text: $apiKey)
+                                ZStack(alignment: .leading) {
+                                    if apiKey.isEmpty {
+                                        Text("Paste your API key here")
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(theme.muted)
+                                            .padding(.leading, 8)
+                                            .allowsHitTesting(false)
                                     }
+                                    Group {
+                                        if showApiKey {
+                                            TextField("", text: $apiKey)
+                                        } else {
+                                            SecureField("", text: $apiKey)
+                                        }
+                                    }
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .textFieldStyle(.plain)
+                                    .padding(.leading, 8)
                                 }
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .textFieldStyle(.plain)
-                                .padding(8)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                                 Button(action: { showApiKey.toggle() }) {
                                     Image(systemName: showApiKey ? "eye.slash" : "eye")
@@ -1627,6 +1639,7 @@ struct OnboardingView: View {
                             }
                             .background(theme.surface2)
                             .border(theme.border, width: 1)
+                            .frame(height: 34)
                         }
                     }
                 }
