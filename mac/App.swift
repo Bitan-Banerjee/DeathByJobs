@@ -1283,10 +1283,14 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         // Custom mode selector to avoid system segmented picker color issues
                         HStack(spacing: 0) {
-                            ModeButton(title: "Daily Quota", value: "quota", selection: $viewModel.mode, theme: theme)
-                            ModeButton(title: "Single Test", value: "single_test", selection: $viewModel.mode, theme: theme)
-                            ModeButton(title: "Resume", value: "resume", selection: $viewModel.mode, theme: theme)
+                            ModeButton(title: "Daily Quota", value: "quota", selection: $viewModel.mode, theme: theme, fontSize: 13)
+                                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                            ModeButton(title: "Single Test", value: "single_test", selection: $viewModel.mode, theme: theme, fontSize: 13)
+                                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                            ModeButton(title: "Resume", value: "resume", selection: $viewModel.mode, theme: theme, fontSize: 13)
+                                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
                         }
+                        .frame(height: 40)
 
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 4) {
@@ -1383,11 +1387,12 @@ struct ModeButton: View {
     let value: String
     @Binding var selection: String
     let theme: AppTheme
+    var fontSize: CGFloat = 11
 
     var body: some View {
         Button(action: { selection = value }) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
                 .foregroundColor(isSelected ? theme.bg : theme.text)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
