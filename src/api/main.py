@@ -513,13 +513,15 @@ async def save_onboarding(payload: OnboardingPayload):
     save_profile(profile)
     save_providers(providers)
 
-    # Persist API key to .env using the correct env var name for the provider
+    # Persist API key to .env using the correct env var name for the provider.
+    # If the submitted key is empty (e.g. settings page left it blank), keep
+    # the existing key instead of overwriting it with an empty value.
     env_key = providers["providers"][payload.provider].get("api_key_env", f"{payload.provider.upper()}_API_KEY")
-    _write_env_key(env_key, payload.api_key)
-
-    # Also inject into the current process so resume derivation can use it immediately
-    # without requiring a backend restart.
-    os.environ[env_key] = payload.api_key
+    if payload.api_key.strip():
+        _write_env_key(env_key, payload.api_key)
+        # Also inject into the current process so resume derivation can use it immediately
+        # without requiring a backend restart.
+        os.environ[env_key] = payload.api_key
 
     return {"status": "saved", "provider": payload.provider, "env_key": env_key}
 

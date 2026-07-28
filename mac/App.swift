@@ -2016,10 +2016,11 @@ struct SettingsView: View {
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("API KEY").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            Text("Leave blank to keep your existing API key.").font(.system(size: 10, design: .monospaced)).foregroundColor(theme.muted)
                             HStack(spacing: 0) {
                                 ZStack(alignment: .leading) {
                                     if apiKey.isEmpty {
-                                        Text("Paste your API key here")
+                                        Text("Paste new API key to change, or leave blank")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                             .foregroundColor(theme.muted)
                                             .padding(.leading, 8)
