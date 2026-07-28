@@ -1413,6 +1413,7 @@ struct OnboardingView: View {
     @State private var currentEmployer: String = ""
     @State private var provider: String = "gemini"
     @State private var apiKey: String = ""
+    @State private var showApiKey: Bool = false
     @State private var resumeURL: URL? = nil
     @State private var isSaving: Bool = false
     @State private var errorText: String? = nil
@@ -1424,6 +1425,10 @@ struct OnboardingView: View {
         ("anthropic", "Anthropic Claude"),
         ("local", "Local / Ollama")
     ]
+
+    private var providerDisplayName: String {
+        providers.first(where: { $0.0 == provider })?.1 ?? "Select Provider"
+    }
 
     private let varianceLevels = [
         ("strict", "Strict — exact tools only"),
@@ -1491,10 +1496,12 @@ struct OnboardingView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
                             HStack(spacing: 0) {
-                                ForEach(varianceLevels, id: \.0) { level in
+                                ForEach(Array(varianceLevels.enumerated()), id: \.offset) { _, level in
                                     ModeButton(title: level.1, value: level.0, selection: $matchVariance, theme: theme)
+                                        .frame(maxWidth: .infinity)
                                 }
                             }
+                            .frame(maxWidth: .infinity)
                         }
                     }
                 }
@@ -1514,25 +1521,60 @@ struct OnboardingView: View {
                         sectionTitle("AI Provider")
                         VStack(alignment: .leading, spacing: 8) {
                             Text("PROVIDER").font(theme.monoSmallFont).foregroundColor(theme.muted)
-                            Picker("", selection: $provider) {
+                            Menu {
                                 ForEach(providers, id: \.0) { p in
-                                    Text(p.1).tag(p.0)
+                                    Button(action: { provider = p.0 }) {
+                                        HStack {
+                                            Text(p.1).foregroundColor(theme.text)
+                                            if provider == p.0 {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
                                 }
+                            } label: {
+                                HStack {
+                                    Text(providerDisplayName)
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(theme.text)
+                                    Spacer()
+                                    Image(systemName: "chevron.down").foregroundColor(theme.muted)
+                                }
+                                .padding(8)
+                                .frame(width: 240)
+                                .background(theme.surface2)
+                                .border(theme.border, width: 1)
                             }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .frame(width: 240)
-                            .padding(6)
+                            .buttonStyle(.plain)
+                            .focusable(false)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("API KEY").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            HStack(spacing: 0) {
+                                Group {
+                                    if showApiKey {
+                                        TextField("API Key", text: $apiKey)
+                                    } else {
+                                        SecureField("API Key", text: $apiKey)
+                                    }
+                                }
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+
+                                Button(action: { showApiKey.toggle() }) {
+                                    Image(systemName: showApiKey ? "eye.slash" : "eye")
+                                        .foregroundColor(theme.muted)
+                                }
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .padding(.trailing, 8)
+                            }
                             .background(theme.surface2)
                             .border(theme.border, width: 1)
                         }
-                        SecureField("API Key", text: $apiKey)
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(theme.text)
-                            .padding(8)
-                            .background(theme.surface2)
-                            .border(theme.border, width: 1)
-                            .textFieldStyle(.plain)
                     }
                 }
                 .padding(.bottom, 20)
