@@ -1770,23 +1770,11 @@ struct OnboardingView: View {
                         sectionTitle("Platform Credentials")
                         HStack(spacing: 14) {
                             labeledTextField("LinkedIn Email", text: $linkedinEmail)
-                            SecureField("LinkedIn Password", text: $linkedinPassword)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .textFieldStyle(.plain)
-                                .padding(8)
-                                .background(theme.surface2)
-                                .border(theme.border, width: 1)
+                            labeledSecureField("LinkedIn Password", text: $linkedinPassword, placeholder: "Password")
                         }
                         HStack(spacing: 14) {
                             labeledTextField("Naukri Email", text: $naukriEmail)
-                            SecureField("Naukri Password", text: $naukriPassword)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .textFieldStyle(.plain)
-                                .padding(8)
-                                .background(theme.surface2)
-                                .border(theme.border, width: 1)
+                            labeledSecureField("Naukri Password", text: $naukriPassword, placeholder: "Password")
                         }
                     }
                 }
@@ -1915,6 +1903,29 @@ struct OnboardingView: View {
 
     private var isValid: Bool {
         !candidateName.isEmpty && !targetRole.isEmpty && !apiKey.isEmpty && resumeURL != nil && !experienceYears.isEmpty
+    }
+
+    private func labeledSecureField(_ label: String, text: Binding<String>, placeholder: String = "") -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+            ZStack(alignment: .leading) {
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(theme.muted)
+                        .padding(.leading, 8)
+                        .allowsHitTesting(false)
+                }
+                SecureField("", text: text)
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(theme.text)
+                    .textFieldStyle(.plain)
+                    .padding(.leading, 8)
+            }
+            .padding(.vertical, 8)
+            .background(theme.surface2)
+            .border(theme.border, width: 1)
+        }
     }
 
     private func sectionTitle(_ text: String) -> some View {
@@ -2145,23 +2156,11 @@ struct SettingsView: View {
                         sectionTitle("Platform Credentials")
                         HStack(spacing: 14) {
                             labeledTextField("LinkedIn Email", text: $linkedinEmail)
-                            SecureField("LinkedIn Password", text: $linkedinPassword)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .textFieldStyle(.plain)
-                                .padding(8)
-                                .background(theme.surface2)
-                                .border(theme.border, width: 1)
+                            labeledSecureField("LinkedIn Password", text: $linkedinPassword, placeholder: "Password")
                         }
                         HStack(spacing: 14) {
                             labeledTextField("Naukri Email", text: $naukriEmail)
-                            SecureField("Naukri Password", text: $naukriPassword)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .textFieldStyle(.plain)
-                                .padding(8)
-                                .background(theme.surface2)
-                                .border(theme.border, width: 1)
+                            labeledSecureField("Naukri Password", text: $naukriPassword, placeholder: "Password")
                         }
                     }
                 }
@@ -2252,6 +2251,29 @@ struct SettingsView: View {
             .font(.system(size: 11, weight: .bold, design: .monospaced))
             .tracking(1.2)
             .foregroundColor(theme.muted)
+    }
+
+    private func labeledSecureField(_ label: String, text: Binding<String>, placeholder: String = "") -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+            ZStack(alignment: .leading) {
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(theme.muted)
+                        .padding(.leading, 8)
+                        .allowsHitTesting(false)
+                }
+                SecureField("", text: text)
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(theme.text)
+                    .textFieldStyle(.plain)
+                    .padding(.leading, 8)
+            }
+            .padding(.vertical, 8)
+            .background(theme.surface2)
+            .border(theme.border, width: 1)
+        }
     }
 
     private func labeledTextField(_ label: String, text: Binding<String>, placeholder: String = "", width: CGFloat? = nil) -> some View {
