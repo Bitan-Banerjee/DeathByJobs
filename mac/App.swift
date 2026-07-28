@@ -870,32 +870,32 @@ struct TagInputField: View {
         commaSeparatedText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 90), spacing: 6)]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
 
             if !tags.isEmpty {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-                    ForEach(tags, id: \.self) { tag in
-                        HStack(spacing: 4) {
-                            Text(tag)
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                .foregroundColor(theme.text)
-                                .lineLimit(1)
-                            Button(action: { removeTag(tag) }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(theme.muted)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(tags, id: \.self) { tag in
+                            HStack(spacing: 4) {
+                                Text(tag)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .lineLimit(1)
+                                Button(action: { removeTag(tag) }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(theme.muted)
+                                }
+                                .buttonStyle(.plain)
+                                .focusable(false)
                             }
-                            .buttonStyle(.plain)
-                            .focusable(false)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(theme.surface2)
+                            .border(theme.border, width: 1)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(theme.surface2)
-                        .border(theme.border, width: 1)
                     }
                 }
             }
