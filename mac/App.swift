@@ -1743,47 +1743,54 @@ struct OnboardingView: View {
         isSaving = true
         errorText = nil
 
-        viewModel.uploadResume(url: resumeURL) { uploaded, uploadError in
-            guard uploaded else {
+        // 1. Save profile + provider + API key first so backend has the key.
+        let payload = OnboardingPayload(
+            candidate_name: self.candidateName,
+            candidate_email: self.candidateEmail,
+            target_role: self.targetRole,
+            experience_years: Int(self.experienceYears) ?? 4,
+            experience_range: self.experienceRange,
+            notice_period: self.noticePeriod,
+            serving_notice: self.servingNotice,
+            core_skills: self.coreSkills.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            linkedin_keyword: self.linkedinKeyword,
+            naukri_keyword: self.naukriKeyword,
+            location: self.location,
+            match_variance: self.matchVariance,
+            title_red_flags: self.titleRedFlags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            excluded_companies: self.excludedCompanies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            current_employer: self.currentEmployer,
+            provider: self.provider,
+            api_key: self.apiKey,
+            analogous_skills: nil
+        )
+
+        self.viewModel.submitOnboarding(payload) { saved, saveError in
+            guard saved else {
                 self.isSaving = false
-                self.errorText = uploadError ?? "Resume upload failed"
+                self.errorText = saveError ?? "Failed to save profile"
                 return
             }
 
-            self.viewModel.deriveResume { derived, deriveError in
-                guard derived else {
+            // 2. Upload resume now that the backend knows which provider/key to use.
+            self.viewModel.uploadResume(url: resumeURL) { uploaded, uploadError in
+                guard uploaded else {
                     self.isSaving = false
-                    self.errorText = deriveError ?? "Could not derive base_resume.md"
+                    self.errorText = uploadError ?? "Resume upload failed"
                     return
                 }
-                self.derivedResume = true
 
-                let payload = OnboardingPayload(
-                    candidate_name: self.candidateName,
-                    candidate_email: self.candidateEmail,
-                    target_role: self.targetRole,
-                    experience_years: Int(self.experienceYears) ?? 4,
-                    experience_range: self.experienceRange,
-                    notice_period: self.noticePeriod,
-                    serving_notice: self.servingNotice,
-                    core_skills: self.coreSkills.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
-                    linkedin_keyword: self.linkedinKeyword,
-                    naukri_keyword: self.naukriKeyword,
-                    location: self.location,
-                    match_variance: self.matchVariance,
-                    title_red_flags: self.titleRedFlags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
-                    excluded_companies: self.excludedCompanies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
-                    current_employer: self.currentEmployer,
-                    provider: self.provider,
-                    api_key: self.apiKey,
-                    analogous_skills: nil
-                )
-
-                self.viewModel.submitOnboarding(payload) { success, saveError in
+                // 3. Derive base_resume.md from resume.docx.
+                self.viewModel.deriveResume { derived, deriveError in
                     self.isSaving = false
-                    if !success {
-                        self.errorText = saveError ?? "Failed to save profile"
+                    guard derived else {
+                        self.errorText = deriveError ?? "Could not derive base_resume.md"
+                        return
                     }
+                    self.derivedResume = true
+
+                    // 4. Close onboarding and land on dashboard.
+                    self.viewModel.onboardingConfigured = true
                 }
             }
         }

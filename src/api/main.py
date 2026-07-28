@@ -512,6 +512,10 @@ async def save_onboarding(payload: OnboardingPayload):
     env_key = providers["providers"][payload.provider].get("api_key_env", f"{payload.provider.upper()}_API_KEY")
     _write_env_key(env_key, payload.api_key)
 
+    # Also inject into the current process so resume derivation can use it immediately
+    # without requiring a backend restart.
+    os.environ[env_key] = payload.api_key
+
     return {"status": "saved", "provider": payload.provider, "env_key": env_key}
 
 
