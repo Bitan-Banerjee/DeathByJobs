@@ -187,6 +187,7 @@ struct OnboardingPayload: Codable {
     let naukri_keyword: String
     let location: String
     let match_variance: String
+    let title_red_flags: [String]
     let excluded_companies: [String]
     let current_employer: String
     let provider: String
@@ -1407,6 +1408,7 @@ struct OnboardingView: View {
     @State private var naukriKeyword: String = "Data Engineer"
     @State private var location: String = "India"
     @State private var matchVariance: String = "moderate"
+    @State private var titleRedFlags: String = "director, manager, vp, lead, head, principal, frontend, front-end, ui, ux, ios, android, mobile, react, angular, full stack, full-stack, qa, test, support"
     @State private var excludedCompanies: String = "Turing"
     @State private var currentEmployer: String = ""
     @State private var provider: String = "gemini"
@@ -1484,6 +1486,8 @@ struct OnboardingView: View {
                             labeledTextField("Naukri Keyword", text: $naukriKeyword)
                         }
 
+                        labeledTextField("Titles/Roles to Avoid (comma separated)", text: $titleRedFlags)
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
                             HStack(spacing: 0) {
@@ -1510,11 +1514,17 @@ struct OnboardingView: View {
                         sectionTitle("AI Provider")
                         VStack(alignment: .leading, spacing: 8) {
                             Text("PROVIDER").font(theme.monoSmallFont).foregroundColor(theme.muted)
-                            HStack(spacing: 0) {
+                            Picker("", selection: $provider) {
                                 ForEach(providers, id: \.0) { p in
-                                    ModeButton(title: p.1, value: p.0, selection: $provider, theme: theme)
+                                    Text(p.1).tag(p.0)
                                 }
                             }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 240)
+                            .padding(6)
+                            .background(theme.surface2)
+                            .border(theme.border, width: 1)
                         }
                         SecureField("API Key", text: $apiKey)
                             .font(.system(size: 13, design: .monospaced))
@@ -1652,6 +1662,7 @@ struct OnboardingView: View {
                     naukri_keyword: self.naukriKeyword,
                     location: self.location,
                     match_variance: self.matchVariance,
+                    title_red_flags: self.titleRedFlags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
                     excluded_companies: self.excludedCompanies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
                     current_employer: self.currentEmployer,
                     provider: self.provider,

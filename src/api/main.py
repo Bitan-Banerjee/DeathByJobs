@@ -77,6 +77,7 @@ class OnboardingPayload(BaseModel):
     naukri_keyword: str
     location: str
     match_variance: str
+    title_red_flags: list[str]
     excluded_companies: list[str]
     current_employer: str
     provider: str
@@ -450,6 +451,10 @@ async def save_onboarding(payload: OnboardingPayload):
         "Informatica": "ETL/ELT",
     }
 
+    custom_flags = [f.strip().lower() for f in payload.title_red_flags if f.strip()]
+    default_flags = DEFAULT_PROFILE["filters"]["title"]["red_flags"]
+    merged_red_flags = list(dict.fromkeys(default_flags + custom_flags))
+
     profile = {
         "candidate": {
             "name": payload.candidate_name,
@@ -470,7 +475,10 @@ async def save_onboarding(payload: OnboardingPayload):
         },
         "filters": {
             "match_variance": payload.match_variance,
-            "title": DEFAULT_PROFILE["filters"]["title"],
+            "title": {
+                **DEFAULT_PROFILE["filters"]["title"],
+                "red_flags": merged_red_flags,
+            },
             "company": {
                 "excluded": excluded,
                 "current_employer": payload.current_employer.strip(),
