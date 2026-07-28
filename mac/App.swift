@@ -1667,6 +1667,7 @@ struct OnboardingView: View {
     @State private var errorText: String? = nil
     @State private var derivedResume: Bool = false
     @State private var showSuccess: Bool = false
+    @State private var scrollToTop: Bool = false
 
     private let providers = [
         ("gemini", "Google Gemini"),
@@ -1686,12 +1687,14 @@ struct OnboardingView: View {
     ]
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Welcome").font(theme.headingFont).foregroundColor(theme.text)
                     Text("Set up your profile so the pipeline can find jobs that fit you.").font(theme.monoFont).foregroundColor(theme.muted)
                 }
+                .id("top")
                 .padding(.bottom, 32)
 
                 if let error = errorText {
@@ -1911,6 +1914,10 @@ struct OnboardingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.bg)
+        .onChange(of: scrollToTop) { _, _ in
+            withAnimation { proxy.scrollTo("top", anchor: .top) }
+        }
+        }
     }
 
     private var isValid: Bool {
@@ -2018,6 +2025,7 @@ struct OnboardingView: View {
 
                     // 4. Show success, then close onboarding.
                     self.showSuccess = true
+                    self.scrollToTop.toggle()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         self.viewModel.onboardingConfigured = true
                         self.isPresented = false
@@ -2060,6 +2068,7 @@ struct SettingsView: View {
     @State private var isSaving: Bool = false
     @State private var saveMessage: String? = nil
     @State private var saveError: String? = nil
+    @State private var scrollToTop: Bool = false
 
     private let providers = [
         ("gemini", "Google Gemini"),
@@ -2075,12 +2084,14 @@ struct SettingsView: View {
     ]
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Settings").font(theme.headingFont).foregroundColor(theme.text)
                     Text("Edit your profile, provider, and filters at any time.").font(theme.monoFont).foregroundColor(theme.muted)
                 }
+                .id("top")
                 .padding(.bottom, 32)
 
                 if let error = saveError {
@@ -2255,9 +2266,13 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.bg)
+        .onChange(of: scrollToTop) { _, _ in
+            withAnimation { proxy.scrollTo("top", anchor: .top) }
+        }
         .task {
             await viewModel.loadConfig()
             populateFromConfig()
+        }
         }
     }
 
@@ -2361,6 +2376,7 @@ struct SettingsView: View {
             self.isSaving = false
             if success {
                 self.saveMessage = "Settings saved. Changes take effect on the next pipeline run."
+                self.scrollToTop.toggle()
             } else {
                 self.saveError = error ?? "Failed to save settings"
             }
