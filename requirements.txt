@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+apscheduler
+playwright
+playwright-stealth
+python-dotenv
+google-generativeai
+pywebview
+pydantic

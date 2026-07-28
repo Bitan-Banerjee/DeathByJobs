@@ -7,9 +7,10 @@ import json
 from datetime import datetime
 import atexit
 import signal
+from pathlib import Path
 
 # --- GLOBAL CONFIG & PATHS ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOCK_FILE = os.path.join(BASE_DIR, "app.lock")
 
 try:
