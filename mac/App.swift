@@ -1666,6 +1666,7 @@ struct OnboardingView: View {
     @State private var isSaving: Bool = false
     @State private var errorText: String? = nil
     @State private var derivedResume: Bool = false
+    @State private var showSuccess: Bool = false
 
     private let providers = [
         ("gemini", "Google Gemini"),
@@ -1698,6 +1699,17 @@ struct OnboardingView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.octagon.fill").foregroundColor(theme.errorRed)
                             Text(error).font(theme.monoFont).foregroundColor(theme.errorRed)
+                            Spacer()
+                        }
+                    }
+                    .padding(.bottom, 20)
+                }
+
+                if showSuccess {
+                    ThemedCard(theme: theme, borderColor: theme.accent) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill").foregroundColor(theme.accent)
+                            Text("Profile saved! Closing…").font(theme.monoFont).foregroundColor(theme.accent)
                             Spacer()
                         }
                     }
@@ -2004,9 +2016,12 @@ struct OnboardingView: View {
                     }
                     self.derivedResume = true
 
-                    // 4. Close onboarding and land on dashboard.
-                    self.viewModel.onboardingConfigured = true
-                    self.isPresented = false
+                    // 4. Show success, then close onboarding.
+                    self.showSuccess = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        self.viewModel.onboardingConfigured = true
+                        self.isPresented = false
+                    }
                 }
             }
         }
