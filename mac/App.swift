@@ -1058,16 +1058,39 @@ struct StageNodeView: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Rectangle().fill(theme.surface)
+                Rectangle()
+                    .fill(boxBackground)
                     .frame(width: 52, height: 52)
-                    .border(theme.border, width: 1)
+                    .border(boxBorder, width: 1)
 
-                Image(systemName: iconName).font(.system(size: 20)).foregroundColor(isActive || isDone ? theme.bg : theme.muted)
+                Image(systemName: iconName)
+                    .font(.system(size: 20))
+                    .foregroundColor(iconColor)
             }
-            Text(label.uppercased()).font(.system(size: 9, weight: .bold, design: .monospaced)).tracking(0.8)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(0.8)
                 .foregroundColor(isActive || isDone ? theme.text : theme.muted)
                 .multilineTextAlignment(.center)
         }
+    }
+
+    private var boxBackground: Color {
+        if isActive { return Color(hex: "F5D76E") }       // warm yellow
+        if isDone   { return theme.accent }                // burgundy
+        return theme.surface                               // cream
+    }
+
+    private var boxBorder: Color {
+        if isActive { return Color(hex: "D4A017") }        // darker yellow border
+        if isDone   { return theme.accent }                // burgundy
+        return theme.border                                // black
+    }
+
+    private var iconColor: Color {
+        if isActive { return theme.text }                  // dark icon on yellow
+        if isDone   { return theme.bg }                    // white icon on burgundy
+        return theme.muted                                 // muted on cream
     }
 }
 
