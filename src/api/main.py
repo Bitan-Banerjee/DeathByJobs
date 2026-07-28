@@ -82,6 +82,10 @@ class OnboardingPayload(BaseModel):
     current_employer: str
     provider: str
     api_key: str
+    linkedin_email: str = ""
+    linkedin_password: str = ""
+    naukri_email: str = ""
+    naukri_password: str = ""
     analogous_skills: dict | None = None
 
 # ── Scheduled Job Functions ───────────────────────────────────────────────────
@@ -435,6 +439,8 @@ async def get_config():
         "providers": safe_providers,
         "resume_path": str(get_resume_paths()[0]),
         "base_resume_path": str(get_resume_paths()[1]),
+        "linkedin_email": os.getenv("LINKEDIN_EMAIL", ""),
+        "naukri_email": os.getenv("NAUKRI_EMAIL", ""),
     }
 
 
@@ -522,6 +528,16 @@ async def save_onboarding(payload: OnboardingPayload):
         # Also inject into the current process so resume derivation can use it immediately
         # without requiring a backend restart.
         os.environ[env_key] = payload.api_key
+
+    # Persist platform credentials to .env
+    if payload.linkedin_email.strip():
+        _write_env_key("LINKEDIN_EMAIL", payload.linkedin_email)
+    if payload.linkedin_password.strip():
+        _write_env_key("LINKEDIN_PASSWORD", payload.linkedin_password)
+    if payload.naukri_email.strip():
+        _write_env_key("NAUKRI_EMAIL", payload.naukri_email)
+    if payload.naukri_password.strip():
+        _write_env_key("NAUKRI_PASSWORD", payload.naukri_password)
 
     return {"status": "saved", "provider": payload.provider, "env_key": env_key}
 

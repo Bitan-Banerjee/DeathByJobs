@@ -192,12 +192,18 @@ struct OnboardingPayload: Codable {
     let current_employer: String
     let provider: String
     let api_key: String
+    let linkedin_email: String
+    let linkedin_password: String
+    let naukri_email: String
+    let naukri_password: String
     let analogous_skills: [String: String]?
 }
 
 struct ConfigResponse: Codable {
     let profile: ProfileConfig
     let providers: ProvidersConfig
+    let linkedin_email: String?
+    let naukri_email: String?
 }
 
 struct ProfileConfig: Codable {
@@ -1652,6 +1658,10 @@ struct OnboardingView: View {
     @State private var provider: String = "gemini"
     @State private var apiKey: String = ""
     @State private var showApiKey: Bool = false
+    @State private var linkedinEmail: String = ""
+    @State private var linkedinPassword: String = ""
+    @State private var naukriEmail: String = ""
+    @State private var naukriPassword: String = ""
     @State private var resumeURL: URL? = nil
     @State private var isSaving: Bool = false
     @State private var errorText: String? = nil
@@ -1751,6 +1761,33 @@ struct OnboardingView: View {
                         sectionTitle("Company Filters")
                         labeledTextField("Current Employer", text: $currentEmployer)
                         labeledTextField("Excluded Companies (comma separated)", text: $excludedCompanies)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Platform Credentials")
+                        HStack(spacing: 14) {
+                            labeledTextField("LinkedIn Email", text: $linkedinEmail)
+                            SecureField("LinkedIn Password", text: $linkedinPassword)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(theme.surface2)
+                                .border(theme.border, width: 1)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Naukri Email", text: $naukriEmail)
+                            SecureField("Naukri Password", text: $naukriPassword)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(theme.surface2)
+                                .border(theme.border, width: 1)
+                        }
                     }
                 }
                 .padding(.bottom, 20)
@@ -1925,6 +1962,10 @@ struct OnboardingView: View {
             current_employer: self.currentEmployer,
             provider: self.provider,
             api_key: self.apiKey,
+            linkedin_email: self.linkedinEmail,
+            linkedin_password: self.linkedinPassword,
+            naukri_email: self.naukriEmail,
+            naukri_password: self.naukriPassword,
             analogous_skills: nil
         )
 
@@ -1985,6 +2026,10 @@ struct SettingsView: View {
     @State private var provider: String = "gemini"
     @State private var apiKey: String = ""
     @State private var showApiKey: Bool = false
+    @State private var linkedinEmail: String = ""
+    @State private var linkedinPassword: String = ""
+    @State private var naukriEmail: String = ""
+    @State private var naukriPassword: String = ""
     @State private var resumeURL: URL? = nil
     @State private var isSaving: Bool = false
     @State private var saveMessage: String? = nil
@@ -2091,6 +2136,33 @@ struct SettingsView: View {
                         sectionTitle("Company Filters")
                         labeledTextField("Current Employer", text: $currentEmployer)
                         labeledTextField("Excluded Companies (comma separated)", text: $excludedCompanies)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Platform Credentials")
+                        HStack(spacing: 14) {
+                            labeledTextField("LinkedIn Email", text: $linkedinEmail)
+                            SecureField("LinkedIn Password", text: $linkedinPassword)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(theme.surface2)
+                                .border(theme.border, width: 1)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Naukri Email", text: $naukriEmail)
+                            SecureField("Naukri Password", text: $naukriPassword)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(theme.text)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(theme.surface2)
+                                .border(theme.border, width: 1)
+                        }
                     }
                 }
                 .padding(.bottom, 20)
@@ -2214,6 +2286,8 @@ struct SettingsView: View {
         excludedCompanies = config.profile.filters.company.excluded.filter { $0.lowercased() != config.profile.filters.company.current_employer.lowercased() }.joined(separator: ", ")
         currentEmployer = config.profile.filters.company.current_employer
         provider = config.providers.active_provider
+        linkedinEmail = config.linkedin_email ?? ""
+        naukriEmail = config.naukri_email ?? ""
     }
 
     private func saveSettings() {
@@ -2239,6 +2313,10 @@ struct SettingsView: View {
             current_employer: currentEmployer,
             provider: provider,
             api_key: apiKey,
+            linkedin_email: linkedinEmail,
+            linkedin_password: linkedinPassword,
+            naukri_email: naukriEmail,
+            naukri_password: naukriPassword,
             analogous_skills: nil
         )
 
