@@ -1,1 +1,3 @@
+import SwiftUI
+
 AiAutomationApp.main()

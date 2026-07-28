@@ -3,6 +3,7 @@ import sys
 import csv
 import json
 import subprocess
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -50,7 +51,11 @@ class CronUpdate(BaseModel):
 def run_main_pipeline():
     """Runs the main job application pipeline."""
     print("Scheduler: Kicking off main pipeline run.")
-    cmd = [sys.executable, "-u", os.path.join(BASE_DIR, "src", "automation", "main.py"), "--ci"]
+    main_script_path = os.path.join(BASE_DIR, "src", "automation", "main.py")
+    cmd = [
+        sys.executable, "-u", main_script_path,
+        "--target", "50", "--max-loops", "4", "--jobs", "25"
+    ]
     log_path = os.path.join(BASE_DIR, "logs", "daily_run.log")
     with open(log_path, "w") as log_file:
         subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
@@ -101,12 +106,36 @@ def startup_event():
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown())
 
+LOCK_FILE = os.path.join(BASE_DIR, "app.lock")
+
+def _pipeline_is_running_from_lock():
+    """Detect if src/automation/main.py is already running via its lock file."""
+    if not os.path.exists(LOCK_FILE):
+        return False
+    try:
+        with open(LOCK_FILE, "r") as f:
+            pid = int(f.read().strip())
+        # Check if the process is actually alive
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, ProcessLookupError):
+        # Stale lock
+        try:
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
+        return False
+
 def get_process_status():
-    if active_process is None:
-        return "idle"
-    if active_process.poll() is None:
+    # If the API itself started a process, trust that first.
+    if active_process is not None:
+        if active_process.poll() is None:
+            return "running"
+        return "finished"
+    # Otherwise, check for a pre-existing pipeline session.
+    if _pipeline_is_running_from_lock():
         return "running"
-    return "finished"
+    return "idle"
 
 # ── Pipeline endpoints ────────────────────────────────────────────────────────
 
@@ -117,9 +146,20 @@ async def root():
         return FileResponse(index)
     return {"message": "AI Pipeline API running. UI not found."}
 
+def _get_lock_pid():
+    if not os.path.exists(LOCK_FILE):
+        return None
+    try:
+        with open(LOCK_FILE, "r") as f:
+            return int(f.read().strip())
+    except (ValueError, OSError):
+        return None
+
 @app.get("/status")
 async def status():
-    return {"status": get_process_status(), "pid": active_process.pid if active_process else None}
+    status = get_process_status()
+    pid = active_process.pid if active_process else _get_lock_pid()
+    return {"status": status, "pid": pid}
 
 
 @app.post("/start_job")
@@ -144,27 +184,75 @@ async def start_pipeline(params: PipelineParams):
         cmd.append("--resume")
 
     log_path = os.path.join(BASE_DIR, "logs", "api_run.log")
-    active_process = subprocess.Popen(cmd, cwd=BASE_DIR, stdout=open(log_path, "w"), stderr=subprocess.STDOUT)
+    log_file = open(log_path, "w")
+    active_process = subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
     return {"status": "started", "pid": active_process.pid}
+
+def _kill_orphan_browsers():
+    """Best-effort cleanup of lingering Chromium/Playwright processes."""
+    try:
+        subprocess.run(
+            ["pkill", "-f", "Chromium"],
+            capture_output=True, text=True, timeout=5
+        )
+    except Exception:
+        pass
 
 @app.post("/stop")
 async def stop_pipeline():
     global active_process
     if active_process and active_process.poll() is None:
         active_process.terminate()
-        active_process.wait()
+        try:
+            active_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            active_process.kill()
+            active_process.wait()
         active_process = None
+        _kill_orphan_browsers()
         return {"status": "stopped"}
     raise HTTPException(status_code=400, detail="No active pipeline to stop.")
 
+def _latest_log_path():
+    """Pick the best available log file for the current or last pipeline run."""
+    # 1. API-launched run log
+    api_log = os.path.join(BASE_DIR, "logs", "api_run.log")
+    if os.path.exists(api_log) and os.path.getsize(api_log) > 0:
+        return api_log
+
+    # 2. Mirror of the running pipeline's output
+    latest_md = os.path.join(BASE_DIR, "latest_run.md")
+    if os.path.exists(latest_md) and os.path.getsize(latest_md) > 0:
+        return latest_md
+
+    # 3. Most recent timestamped log under logs/YYYY/MM/DD/
+    log_root = os.path.join(BASE_DIR, "logs")
+    candidates = []
+    for root, _, files in os.walk(log_root):
+        for f in files:
+            if f.startswith("run_") and f.endswith(".log"):
+                candidates.append(os.path.join(root, f))
+    if candidates:
+        candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return candidates[0]
+
+    return None
+
 @app.get("/logs")
 async def get_logs(lines: int = 100):
-    log_path = os.path.join(BASE_DIR, "logs", "api_run.log")
-    if not os.path.exists(log_path):
+    log_path = _latest_log_path()
+    if not log_path or not os.path.exists(log_path):
         return {"lines": []}
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         all_lines = f.readlines()
-    return {"lines": [l.rstrip() for l in all_lines[-lines:]]}
+    # Strip markdown code-fence markers that may appear in latest_run.md
+    cleaned = []
+    for line in all_lines:
+        stripped = line.rstrip()
+        if stripped in ("```text", "```"):
+            continue
+        cleaned.append(stripped)
+    return {"lines": cleaned[-lines:]}
 
 # ── Report endpoint ───────────────────────────────────────────────────────────
 
@@ -175,7 +263,21 @@ async def get_report():
         "naukri":   {"scraped": 0, "matched": 0, "applied": 0, "failed": 0},
     }
 
-    # Scraped counts from intermediate JSON
+    # Prefer the persistent last-run snapshot written by export_tracker.py.
+    # This ensures the dashboard shows only the metrics from the most recent pipeline run.
+    last_run_report = os.path.join(BASE_DIR, "data", "last_run_report.json")
+    if os.path.exists(last_run_report):
+        try:
+            with open(last_run_report, 'r') as f:
+                report = json.load(f)
+            for platform in ["linkedin", "naukri"]:
+                if platform in report:
+                    data[platform] = report[platform]
+            return {"linkedin": data["linkedin"], "naukri": data["naukri"]}
+        except Exception:
+            pass
+
+    # Fallback: read ephemeral intermediate JSON files from the latest run.
     for platform in ["linkedin", "naukri"]:
         p = os.path.join(BASE_DIR, "data", f"{platform}_jobs.json")
         if os.path.exists(p):
@@ -184,21 +286,19 @@ async def get_report():
                 data[platform]["scraped"] = len(d) if isinstance(d, list) else len(d.get("jobs", []))
             except: pass
 
-    # Applied + failed from tracker CSV
-    tracker = os.path.join(BASE_DIR, "Job_Applications_Tracker.csv")
-    if os.path.exists(tracker):
-        try:
-            with open(tracker, encoding="utf-8", errors="replace") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    url    = row.get("Job URL", "")
-                    status = row.get("Status", "")
-                    platform = "linkedin" if "linkedin.com" in url else "naukri" if "naukri.com" in url else None
-                    if not platform: continue
-                    if "Applied" in status: data[platform]["applied"] += 1
-                    elif "Failed" in status: data[platform]["failed"] += 1
-        except: pass
-        
+    for platform in ["linkedin", "naukri"]:
+        p = os.path.join(BASE_DIR, "data", f"{platform}_matched_jobs.json")
+        if os.path.exists(p):
+            try:
+                d = json.load(open(p))
+                approved = d.get("approved_jobs", []) if isinstance(d, dict) else []
+                data[platform]["matched"] = len(approved)
+                applied = sum(1 for j in approved if j.get("status") == "applied")
+                skipped = sum(1 for j in approved if j.get("status") == "skipped_low_score")
+                data[platform]["applied"] = applied
+                data[platform]["failed"] = len(approved) - applied - skipped
+            except: pass
+
     return {"linkedin": data["linkedin"], "naukri": data["naukri"]}
 
 

@@ -13,6 +13,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOCK_FILE = os.path.join(BASE_DIR, "app.lock")
 
+# Ensure imports work whether the script is run directly or spawned from elsewhere.
+AUTOMATION_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(AUTOMATION_DIR)
+for p in [BASE_DIR, AUTOMATION_DIR, SRC_DIR]:
+    if p not in sys.path:
+        sys.path.insert(0, str(p))
+
 try:
     from linkedin_scraper import scrape_linkedin_jobs
     from naukri_scraper import scrape_naukri_jobs

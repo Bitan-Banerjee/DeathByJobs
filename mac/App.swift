@@ -3,39 +3,8 @@ import AppKit
 import Foundation
 import Combine
 
-// MARK: - Core Design System & Theme
+// MARK: - Design System & Theme
 
-/// Halftone/Dither pattern view for the vintage theme
-struct HalftonePattern: View {
-    let color: Color
-    let density: CGFloat // 0.0 (sparse) to 1.0 (dense)
-    
-    var body: some View {
-        Canvas { context, size in
-            let dotSize = 1.5
-            let spacing = max(1.5, (1.0 - density) * 8.0)
-            
-            let numCols = Int(size.width / (dotSize + spacing))
-            let numRows = Int(size.height / (dotSize + spacing))
-            
-            for row in 0..<numRows {
-                for col in 0..<numCols {
-                    let x = CGFloat(col) * (dotSize + spacing) + (dotSize / 2)
-                    let y = CGFloat(row) * (dotSize + spacing) + (dotSize / 2)
-                    let finalX = x + (row % 2 == 0 ? 0 : spacing / 2)
-                    
-                    if finalX < size.width && y < size.height {
-                        let rect = CGRect(x: finalX, y: y, width: dotSize, height: dotSize)
-                        context.fill(Path(ellipseIn: rect), with: .color(color))
-                    }
-                }
-            }
-        }
-        .clipped()
-    }
-}
-
-// The unified theme object
 struct AppTheme {
     let name: String
     let bg: Color
@@ -49,26 +18,27 @@ struct AppTheme {
     let accentDim: Color
     let errorRed: Color
     let errorRedBg: Color
-    
     let headingFont: Font
     let monoFont: Font
     let monoLargeFont: Font
     let monoSmallFont: Font
 
-    static func from() -> AppTheme {
-        return AppTheme(
+    static func `default`() -> AppTheme {
+        // Colors sampled from the reference image.png: warm cream paper,
+        // near-black ink, and a muted burgundy/mauve halftone accent.
+        AppTheme(
             name: "vintage",
-            bg: Color(hex: "F5F0E6"),
-            surface: Color(hex: "F5F0E6"),
-            surface2: Color(hex: "EAE5D9"),
-            border: Color(hex: "0D0D0D"),
-            text: Color(hex: "0D0D0D"),
-            muted: Color(hex: "5A5A5A"),
-            accent: Color(hex: "A67B84"),
-            accentBg: Color(hex: "A67B84"),
-            accentDim: Color(hex: "A67B84").opacity(0.7),
-            errorRed: Color(hex: "990000"),
-            errorRedBg: Color(hex: "990000").opacity(0.15),
+            bg: Color(hex: "F4ECD8"),
+            surface: Color(hex: "F4ECD8"),
+            surface2: Color(hex: "E8E0CC"),
+            border: Color(hex: "1A1A1A"),
+            text: Color(hex: "1A1A1A"),
+            muted: Color(hex: "5C5C5C"),
+            accent: Color(hex: "9B5B6E"),
+            accentBg: Color(hex: "9B5B6E"),
+            accentDim: Color(hex: "9B5B6E").opacity(0.6),
+            errorRed: Color(hex: "8B1A1A"),
+            errorRedBg: Color(hex: "8B1A1A").opacity(0.12),
             headingFont: .system(size: 32, weight: .bold, design: .serif),
             monoFont: .system(size: 13, design: .monospaced),
             monoLargeFont: .system(size: 28, weight: .bold, design: .monospaced),
@@ -92,31 +62,194 @@ extension Color {
     }
 }
 
+/// Fine, dense dotted halftone pattern used to mimic the vintage print texture in image.png.
+struct HalftonePattern: View {
+    let color: Color
+    let density: CGFloat // 0.0 (sparse) to 1.0 (dense)
+
+    var body: some View {
+        Canvas { context, size in
+            let dotSize: CGFloat = 1.6
+            let baseSpacing: CGFloat = 2.0
+            let spacing = baseSpacing * (1.0 - density * 0.65)
+            let numCols = Int(size.width / (dotSize + spacing)) + 2
+            let numRows = Int(size.height / (dotSize + spacing)) + 2
+
+            for row in 0..<numRows {
+                for col in 0..<numCols {
+                    let x = CGFloat(col) * (dotSize + spacing) + (dotSize / 2)
+                    let y = CGFloat(row) * (dotSize + spacing) + (dotSize / 2)
+                    let finalX = x + (row % 2 == 0 ? 0 : spacing / 2)
+                    if finalX < size.width && y < size.height {
+                        let rect = CGRect(x: finalX, y: y, width: dotSize, height: dotSize)
+                        context.fill(Path(ellipseIn: rect), with: .color(color))
+                    }
+                }
+            }
+        }
+        .clipped()
+    }
+}
+
+/// Offset dotted shadow used behind cards in the reference image.
+/// Rounded, dense black halftone dots shifted behind the card — no extra outline.
+struct DottedShadow<Content: View>: View {
+    let theme: AppTheme
+    let offset: CGSize
+    let borderColor: Color?
+    let content: Content
+    private let cornerRadius: CGFloat = 3
+
+    init(theme: AppTheme, offset: CGSize = CGSize(width: 5, height: 5), borderColor: Color? = nil, @ViewBuilder content: () -> Content) {
+        self.theme = theme
+        self.offset = offset
+        self.borderColor = borderColor
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // Shadow layer: dense black halftone dots, slightly rounded
+            GeometryReader { geo in
+                HalftonePattern(color: theme.text.opacity(0.42), density: 0.9)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            }
+            .offset(offset)
+
+            // Main card layer
+            content
+                .padding(24)
+                .background(theme.surface)
+                .border(borderColor ?? theme.border, width: 1)
+        }
+    }
+}
+
 // MARK: - Models
-struct PipelineParams: Codable { var jobs: Int; var target: Int; var max_loops: Int; var mode: String }
-struct StatusResponse: Codable { let status: String; let pid: Int? }
-struct CronJob: Codable, Identifiable, Equatable { let id: String; let name: String; let enabled: Bool; let minute: Int; let hour: Int }
-struct CronResponse: Codable { let jobs: [CronJob]; }
-struct LogsResponse: Codable { let lines: [String]? }
+
+struct PipelineParams: Codable {
+    var jobs: Int
+    var target: Int
+    var max_loops: Int
+    var mode: String
+}
+
+struct StatusResponse: Codable {
+    let status: String
+    let pid: Int?
+}
+
+struct CronJob: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    var enabled: Bool
+    var hour: Int
+    var minute: Int
+}
+
+struct CronResponse: Codable {
+    let jobs: [CronJob]
+}
+
+struct LogsResponse: Codable {
+    let lines: [String]?
+}
+
+struct ReportResponse: Codable {
+    let linkedin: PlatformReport
+    let naukri: PlatformReport
+}
+
+struct PlatformReport: Codable {
+    let scraped: Int
+    let matched: Int
+    let applied: Int
+    let failed: Int
+}
 
 // MARK: - Backend Process Manager
+
 class BackendManager {
     static let shared = BackendManager()
     private var process: Process?
     private let projectRoot = "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation"
-    func startServer() {
+    private let baseUrl = URL(string: "http://127.0.0.1:8000/status")!
+
+    var isAlreadyRunning: Bool = false
+    var pipelineWasRunningAtLaunch: Bool = false
+
+    func startServerIfNeeded() async {
+        if await backendIsReachable() {
+            isAlreadyRunning = true
+            print("Native App: Backend already running.")
+            return
+        }
+        isAlreadyRunning = false
+        pipelineWasRunningAtLaunch = lockFileExistsWithLiveProcess()
+        await launchServer()
+    }
+
+    private func backendIsReachable() async -> Bool {
+        var request = URLRequest(url: baseUrl)
+        request.timeoutInterval = 1.5
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    private func launchServer() async {
         killPort8000()
         let pythonPath = findPythonPath()
-        let p = Process(); p.executableURL = URL(fileURLWithPath: pythonPath); p.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: pythonPath)
+        p.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
         let pythonCmd = "import sys, uvicorn; sys.path.insert(0, '\(projectRoot)'); uvicorn.run('src.api.main:app', host='127.0.0.1', port=8000, log_level='warning')"
         p.arguments = ["-u", "-c", pythonCmd]
-        let logDir = "\(projectRoot)/logs"; try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
-        let logPath = "\(logDir)/app_launch.log"; FileManager.default.createFile(atPath: logPath, contents: nil)
-        if let fileHandle = FileHandle(forWritingAtPath: logPath) { p.standardOutput = fileHandle; p.standardError = fileHandle }
-        self.process = p; do { try p.run() } catch { print("Native App Error: Failed to start FastAPI server: \(error)") }
+
+        let logDir = "\(projectRoot)/logs"
+        try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
+        let logPath = "\(logDir)/app_launch.log"
+        FileManager.default.createFile(atPath: logPath, contents: nil)
+        if let fileHandle = FileHandle(forWritingAtPath: logPath) {
+            p.standardOutput = fileHandle
+            p.standardError = fileHandle
+        }
+
+        self.process = p
+        do {
+            try p.run()
+        } catch {
+            print("Native App Error: Failed to start FastAPI server: \(error)")
+            return
+        }
+
+        // Wait up to ~10 seconds for the server to respond
+        for _ in 0..<20 {
+            if await backendIsReachable() { return }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        print("Native App Warning: Backend did not become reachable in time.")
     }
-    func stopServer() { if let p = process, p.isRunning { p.terminate(); p.waitUntilExit() }; killPort8000() }
-    private func killPort8000() { let sh = Process(); sh.executableURL = URL(fileURLWithPath: "/bin/sh"); sh.arguments = ["-c", "lsof -ti :8000 | xargs kill -9 2>/dev/null || true"]; try? sh.run(); sh.waitUntilExit() }
+
+    func stopServer() {
+        if let p = process, p.isRunning {
+            p.terminate()
+            p.waitUntilExit()
+        }
+        killPort8000()
+    }
+
+    private func killPort8000() {
+        let sh = Process()
+        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+        sh.arguments = ["-c", "lsof -ti :8000 | xargs kill -9 2>/dev/null || true"]
+        try? sh.run()
+        sh.waitUntilExit()
+    }
+
     private func findPythonPath() -> String {
         let customPath = "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
         if FileManager.default.fileExists(atPath: customPath) { return customPath }
@@ -124,70 +257,266 @@ class BackendManager {
         for path in commonPaths { if FileManager.default.fileExists(atPath: path) { return path } }
         return "python3"
     }
+
+    private func lockFilePath() -> String {
+        "\(projectRoot)/app.lock"
+    }
+
+    private func lockFileExistsWithLiveProcess() -> Bool {
+        let path = lockFilePath()
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8),
+              let pid = Int(contents.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        return processIsAlive(pid)
+    }
+
+    private func processIsAlive(_ pid: Int) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/kill")
+        task.arguments = ["-0", String(pid)]
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    /// Synchronous reachability check used during app termination.
+    func backendIsReachableNow() -> Bool {
+        var request = URLRequest(url: baseUrl)
+        request.timeoutInterval = 1.5
+        let semaphore = DispatchSemaphore(value: 0)
+        var reachable = false
+        let task = URLSession.shared.dataTask(with: request) { _, response, _ in
+            reachable = (response as? HTTPURLResponse)?.statusCode == 200
+            semaphore.signal()
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 2)
+        return reachable
+    }
+
+    /// Synchronous pipeline-running check used during app termination.
+    func pipelineIsRunningNow() -> Bool {
+        // Prefer the API's own view of status.
+        guard let statusUrl = URL(string: "http://127.0.0.1:8000/status") else { return lockFileExistsWithLiveProcess() }
+        var request = URLRequest(url: statusUrl)
+        request.timeoutInterval = 1.5
+        let semaphore = DispatchSemaphore(value: 0)
+        var running = false
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            if let data = data,
+               (response as? HTTPURLResponse)?.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data),
+               decoded.status == "running" {
+                running = true
+            }
+            semaphore.signal()
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 2)
+        return running || lockFileExistsWithLiveProcess()
+    }
 }
 
 // MARK: - View Model
+
 class PipelineViewModel: ObservableObject {
     @Published var status: String = "idle"
+    @Published var backendReachable: Bool = false
+    @Published var backendStarting: Bool = true
+    @Published var backendStartedByApp: Bool = false
     @Published var logs: [String] = []
     @Published var cronJobs: [CronJob] = []
-    @Published var activeStage: Int = -1
+    @Published var report: ReportResponse? = nil
     @Published var page: String = "dashboard"
     @Published var jobs: Int = 25
     @Published var target: Int = 50
     @Published var maxLoops: Int = 4
     @Published var mode: String = "quota"
+    @Published var errorMessage: String? = nil
+
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
-    init() { startPolling() }
-    func startPolling() { /* ... */ }
-    func refreshAll() { /* ... */ }
-    func refreshStatusAndLogs() { /* ... */ }
-    func refreshCron() { /* ... */ }
-    func fetchStatus() async { /* ... */ }
-    func fetchLogs() async { /* ... */ }
-    func fetchCron() async { /* ... */ }
+    private var timer: Timer? = nil
+
+    init() { }
+
+    func prepareBackend() async {
+        await BackendManager.shared.startServerIfNeeded()
+        backendStartedByApp = !BackendManager.shared.isAlreadyRunning
+        backendStarting = false
+        startPolling()
+    }
+
+    func startPolling() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.refreshAll()
+            }
+        }
+        Task { await refreshAll() }
+    }
+
+    func stopPolling() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @MainActor
+    func refreshAll() async {
+        async let statusTask: () = refreshStatus()
+        async let logsTask: () = refreshLogs()
+        async let cronTask: () = refreshCron()
+        async let reportTask: () = refreshReport()
+        _ = await (statusTask, logsTask, cronTask, reportTask)
+    }
+
+    @MainActor
+    func refreshStatus() async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/status")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                backendReachable = false
+                return
+            }
+            let decoded = try JSONDecoder().decode(StatusResponse.self, from: data)
+            status = decoded.status
+            backendReachable = true
+            errorMessage = nil
+        } catch {
+            backendReachable = false
+        }
+    }
+
+    @MainActor
+    func refreshLogs() async {
+        do {
+            var components = URLComponents(string: "\(baseUrl)/logs")!
+            components.queryItems = [URLQueryItem(name: "lines", value: "200")]
+            let (data, response) = try await URLSession.shared.data(from: components.url!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(LogsResponse.self, from: data)
+            logs = decoded.lines ?? []
+        } catch {
+            // Logs non-critical
+        }
+    }
+
+    @MainActor
+    func refreshCron() async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/cron")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(CronResponse.self, from: data)
+            cronJobs = decoded.jobs
+        } catch {
+            cronJobs = []
+        }
+    }
+
+    @MainActor
+    func refreshReport() async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/report")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(ReportResponse.self, from: data)
+            report = decoded
+        } catch {
+            report = nil
+        }
+    }
+
     func startPipeline() {
-        guard let url = URL(string: "\(baseUrl)/start_job") else {
-            print("Invalid URL for start_job")
+        guard backendReachable else {
+            errorMessage = "Backend is not reachable. Start the API server first."
             return
         }
+        guard let url = URL(string: "\(baseUrl)/start") else { return }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            if let error = error {
-                print("Error starting pipeline: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self?.status = "error"
-                }
-                return
-            }
-            
-            // On completion, immediately refresh status to reflect the new state
+        let params = PipelineParams(
+            jobs: jobs,
+            target: target,
+            max_loops: maxLoops,
+            mode: mode
+        )
+        request.httpBody = try? JSONEncoder().encode(params)
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
-                self?.refreshStatusAndLogs()
+                if let error = error {
+                    self?.errorMessage = "Start failed: \(error.localizedDescription)"
+                    self?.status = "error"
+                } else {
+                    self?.status = "running"
+                }
             }
-        }
-        task.resume()
+        }.resume()
     }
-    func stopPipeline() { /* ... */ }
-    func updateCron(jobId: String, enabled: Bool?, hour: Int?, minute: Int?) { /* ... */ }
-    private func updateActiveStage() { /* ... */ }
+
+    func stopPipeline() {
+        guard let url = URL(string: "\(baseUrl)/stop") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.errorMessage = "Stop failed: \(error.localizedDescription)"
+                }
+                self?.status = "idle"
+            }
+        }.resume()
+    }
+
+    func updateCron(jobId: String, enabled: Bool?, hour: Int?, minute: Int?) {
+        guard let url = URL(string: "\(baseUrl)/cron") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "job_id": jobId,
+            "enabled": enabled as Any,
+            "hour": hour as Any,
+            "minute": minute as Any
+        ].compactMapValues { $0 }
+
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.errorMessage = "Schedule update failed: \(error.localizedDescription)"
+                }
+                Task { await self?.refreshCron() }
+            }
+        }.resume()
+    }
 }
 
-// MARK: - THEMED COMPONENTS
+// MARK: - Themed Components
+
 struct ThemedCard<Content: View>: View {
     let theme: AppTheme
     var borderColor: Color? = nil
     let content: Content
-    
+
     init(theme: AppTheme, borderColor: Color? = nil, @ViewBuilder content: () -> Content) {
         self.theme = theme; self.borderColor = borderColor; self.content = content()
     }
-    var body: some View { content.padding(24).background(theme.surface).border(borderColor ?? theme.border, width: 1) }
+
+    var body: some View {
+        DottedShadow(theme: theme, offset: CGSize(width: 6, height: 6), borderColor: borderColor) {
+            content
+        }
+    }
 }
 
 struct ThemedButtonStyle: ButtonStyle {
@@ -195,29 +524,40 @@ struct ThemedButtonStyle: ButtonStyle {
     let theme: AppTheme
     let isDisabled: Bool
     enum ButtonVariant { case accent, red, ghost, saveSmall }
-    
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: variant == .saveSmall ? 11 : 13, weight: .semibold, design: .monospaced))
             .foregroundColor(foreground(isPressed: configuration.isPressed))
             .padding(.horizontal, variant == .saveSmall ? 12 : 18)
             .padding(.vertical, variant == .saveSmall ? 4 : 9)
-            .background(background(isPressed: configuration.isPressed))
+            .background(backgroundColor(isPressed: configuration.isPressed))
             .border(border(isPressed: configuration.isPressed), width: 1)
-            .opacity(isDisabled ? 0.5 : (configuration.isPressed ? 0.82 : 1.0))
             .scaleEffect(configuration.isPressed && !isDisabled ? 0.97 : 1.0)
     }
+
     private func foreground(isPressed: Bool) -> Color {
+        if isDisabled {
+            return theme.muted
+        }
         return variant == .accent ? theme.bg : theme.text
     }
-    private func background(isPressed: Bool) -> Color {
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        if isDisabled {
+            return theme.surface2.opacity(0.7)
+        }
         switch variant {
-        case .accent: return theme.accent
-        case .red: return theme.errorRedBg
-        default: return theme.surface2
+        case .accent: return isPressed ? theme.accent.opacity(0.85) : theme.accent
+        case .red: return isPressed ? theme.errorRed.opacity(0.15) : theme.errorRedBg
+        default: return isPressed ? theme.surface2.opacity(0.85) : theme.surface2
         }
     }
+
     private func border(isPressed: Bool) -> Color {
+        if isDisabled {
+            return theme.border.opacity(0.5)
+        }
         switch variant {
         case .accent: return theme.accent
         case .red: return theme.errorRed
@@ -232,22 +572,55 @@ struct ThemedToggle: View {
     var body: some View {
         Button(action: { isOn.toggle() }) {
             ZStack(alignment: isOn ? .trailing : .leading) {
-                Rectangle().fill(isOn ? theme.accentBg : theme.surface2).frame(width: 42, height: 24).border(isOn ? theme.accentDim : theme.border, width: 2)
-                Rectangle().fill(isOn ? theme.accent : theme.muted).frame(width: 16, height: 16).padding(.horizontal, 2)
+                Rectangle()
+                    .fill(isOn ? theme.accent : theme.surface2)
+                    .frame(width: 44, height: 24)
+                    .border(isOn ? theme.accent : theme.border, width: 1)
+
+                Rectangle()
+                    .fill(isOn ? theme.bg : theme.text.opacity(0.7))
+                    .frame(width: 18, height: 18)
+                    .padding(.horizontal, 2)
             }
-        }.buttonStyle(.plain)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
     }
 }
 
-// MARK: - Rebuilt Original Views
+// MARK: - Subviews
+
 struct LogoView: View {
+    let theme: AppTheme
+
+    private var logoImage: NSImage? {
+        // Try the app bundle Resources first, then fall back to the project root.
+        let candidates = [
+            Bundle.main.url(forResource: "logo", withExtension: "png"),
+            URL(fileURLWithPath: "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation/logo.png")
+        ]
+        for url in candidates.compactMap({ $0 }) {
+            if let image = NSImage(contentsOf: url) { return image }
+        }
+        return nil
+    }
+
     var body: some View {
-        ZStack {
-            Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 32, height: 32)
-            HStack(spacing: 2) {
-                Text(">").font(.system(size: 16, weight: .bold, design: .monospaced))
-                Rectangle().fill(Color.primary).frame(width: 6, height: 3).offset(y: 4)
-            }.foregroundColor(.primary)
+        Group {
+            if let image = logoImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 54, height: 54)
+            } else {
+                ZStack {
+                    Rectangle().fill(theme.text.opacity(0.1)).frame(width: 32, height: 32)
+                    HStack(spacing: 2) {
+                        Text(">").font(.system(size: 16, weight: .bold, design: .monospaced))
+                        Rectangle().fill(theme.text).frame(width: 6, height: 3).offset(y: 4)
+                    }.foregroundColor(theme.text)
+                }
+            }
         }
     }
 }
@@ -259,21 +632,59 @@ struct StatusPillView: View {
         HStack(spacing: 8) {
             Circle().fill(dotColor).frame(width: 8, height: 8)
             Text(status.uppercased()).font(.system(size: 11, weight: .bold, design: .monospaced)).tracking(0.6)
-        }.frame(maxWidth: .infinity).padding(.vertical, 8).background(pillBg).foregroundColor(pillFg).border(pillBorder, width: 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+            ZStack {
+                pillBg
+
+            }
+        )
+        .foregroundColor(pillFg)
+        .border(pillBorder, width: 2)
     }
-    private var dotColor: Color { switch status.lowercased() { case "running": return theme.accent; case "error": return theme.errorRed; default: return theme.muted } }
-    private var pillBg: Color { switch status.lowercased() { case "running": return theme.accentBg; case "error": return theme.errorRedBg; default: return theme.surface2 } }
-    private var pillFg: Color { switch status.lowercased() { case "running": return theme.accent; case "error": return theme.errorRed; default: return theme.muted } }
-    private var pillBorder: Color { switch status.lowercased() { case "running": return theme.accent; case "error": return theme.errorRed; default: return theme.border } }
+
+    private var dotColor: Color {
+        switch status.lowercased() {
+        case "running": return theme.bg
+        case "error": return theme.errorRed
+        default: return theme.muted
+        }
+    }
+    private var pillBg: Color {
+        switch status.lowercased() {
+        case "running": return theme.accentBg
+        case "error": return theme.errorRedBg
+        default: return theme.surface2
+        }
+    }
+    private var pillFg: Color {
+        switch status.lowercased() {
+        case "running": return theme.bg
+        case "error": return theme.errorRed
+        default: return theme.muted
+        }
+    }
+    private var pillBorder: Color {
+        switch status.lowercased() {
+        case "running": return theme.accent
+        case "error": return theme.errorRed
+        default: return theme.border
+        }
+    }
 }
 
 struct StatBoxView: View {
     let label: String, value: String, isAccent: Bool, theme: AppTheme
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(label.uppercased()).font(theme.monoSmallFont).tracking(1.0).foregroundColor(theme.muted)
-            Text(value).font(theme.monoLargeFont).foregroundColor(isAccent ? theme.accent : theme.text).lineLimit(1)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 18).background(theme.surface).border(theme.border, width: 2)
+        DottedShadow(theme: theme, borderColor: theme.border) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(label.uppercased()).font(theme.monoSmallFont).tracking(1.0).foregroundColor(theme.muted)
+                Text(value).font(theme.monoLargeFont).foregroundColor(isAccent ? theme.accent : theme.text).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -282,12 +693,10 @@ struct StageNodeView: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Rectangle().fill(isActive || isDone ? theme.accentBg : theme.surface)
+                Rectangle().fill(theme.surface)
                     .frame(width: 52, height: 52)
                     .border(theme.border, width: 1)
-                if isActive || isDone {
-                    HalftonePattern(color: theme.text.opacity(0.4), density: 0.4)
-                }
+
                 Image(systemName: iconName).font(.system(size: 20)).foregroundColor(isActive || isDone ? theme.bg : theme.muted)
             }
             Text(label.uppercased()).font(.system(size: 9, weight: .bold, design: .monospaced)).tracking(0.8)
@@ -306,68 +715,198 @@ struct StageLineView: View {
 struct LogLineView: View {
     let line: String
     let theme: AppTheme
-    var body: some View { Text(line.isEmpty ? " " : line).font(.system(size: 11, design: .monospaced)).foregroundColor(textColor).lineLimit(nil).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }
+    var body: some View {
+        Text(line.isEmpty ? " " : line)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundColor(textColor)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
     private var textColor: Color {
-        if line.contains("FAILURE") { return theme.errorRed }
+        if line.contains("FAILURE") || line.contains("CRITICAL") { return theme.errorRed }
         if line.contains("✅") { return theme.accent }
+        if line.contains("⚠️") { return theme.errorRed.opacity(0.8) }
         return theme.text
     }
 }
 
 struct CronRowView: View {
-    let job: CronJob, theme: AppTheme, onUpdate: (Bool?, Int?, Int?) -> Void
+    let job: CronJob
+    let theme: AppTheme
+    let onUpdate: (Bool?, Int?, Int?) -> Void
+
     @State private var hourStr: String
     @State private var minuteStr: String
-    
+
     init(job: CronJob, theme: AppTheme, onUpdate: @escaping (Bool?, Int?, Int?) -> Void) {
         self.job = job; self.theme = theme; self.onUpdate = onUpdate
         _hourStr = State(initialValue: String(format: "%02d", job.hour))
         _minuteStr = State(initialValue: String(format: "%02d", job.minute))
     }
-    
+
     var body: some View {
         HStack(spacing: 16) {
-            ThemedToggle(isOn: Binding(get: { job.enabled }, set: { onUpdate($0, nil, nil) }), theme: theme)
+            ThemedToggle(
+                isOn: Binding(
+                    get: { job.enabled },
+                    set: { onUpdate($0, nil, nil) }
+                ),
+                theme: theme
+            )
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.name).font(.system(size: 14, weight: .semibold, design: .monospaced)).foregroundColor(theme.text)
-                Text(job.enabled ? "Runs daily at \(hourStr):\(minuteStr)" : "Disabled").font(.system(size: 11, design: .monospaced)).foregroundColor(theme.muted)
+                Text(job.enabled ? "Runs daily at \(String(format: "%02d", job.hour)):\(String(format: "%02d", job.minute))" : "Disabled")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(theme.muted)
             }
             Spacer()
             HStack(spacing: 6) {
-                TextField("", text: $hourStr).font(.system(size: 13, design: .monospaced)).multilineTextAlignment(.center).padding(4).background(theme.surface).border(theme.border, width: 2).frame(width: 56).textFieldStyle(.plain)
+                TextField("", text: $hourStr, onEditingChanged: { isEditing in
+                    if !isEditing {
+                        if let val = Int(hourStr) {
+                            hourStr = String(format: "%02d", min(max(val, 0), 23))
+                        } else {
+                            hourStr = String(format: "%02d", job.hour)
+                        }
+                    }
+                }, onCommit: {})
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(theme.text)
+                    .multilineTextAlignment(.center)
+                    .padding(4)
+                    .background(theme.surface2)
+                    .border(theme.border, width: 2)
+                    .frame(width: 56)
+                    .textFieldStyle(.plain)
+                    .onReceive(Just(hourStr)) { newValue in
+                        let filtered = newValue.filter { "0123456789".contains($0) }
+                        if filtered != newValue { hourStr = filtered }
+                        if filtered.count > 2 { hourStr = String(filtered.prefix(2)) }
+                    }
+
                 Text(":").font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundColor(theme.muted)
-                TextField("", text: $minuteStr).font(.system(size: 13, design: .monospaced)).multilineTextAlignment(.center).padding(4).background(theme.surface).border(theme.border, width: 2).frame(width: 56).textFieldStyle(.plain)
-                if isDirty { Button("Save") { if let h = Int(hourStr), let m = Int(minuteStr) { onUpdate(nil, h, m) } }.buttonStyle(ThemedButtonStyle(variant: .saveSmall, theme: theme, isDisabled: false)) }
+
+                TextField("", text: $minuteStr, onEditingChanged: { isEditing in
+                    if !isEditing {
+                        if let val = Int(minuteStr) {
+                            minuteStr = String(format: "%02d", min(max(val, 0), 59))
+                        } else {
+                            minuteStr = String(format: "%02d", job.minute)
+                        }
+                    }
+                }, onCommit: {})
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(theme.text)
+                    .multilineTextAlignment(.center)
+                    .padding(4)
+                    .background(theme.surface2)
+                    .border(theme.border, width: 2)
+                    .frame(width: 56)
+                    .textFieldStyle(.plain)
+                    .onReceive(Just(minuteStr)) { newValue in
+                        let filtered = newValue.filter { "0123456789".contains($0) }
+                        if filtered != newValue { minuteStr = filtered }
+                        if filtered.count > 2 { minuteStr = String(filtered.prefix(2)) }
+                    }
+
+                Text("24H")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(theme.muted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(theme.surface2)
+                    .border(theme.border, width: 1)
+
+                if isDirty {
+                    Button("Save") {
+                        let h = max(0, min(Int(hourStr) ?? job.hour, 23))
+                        let m = max(0, min(Int(minuteStr) ?? job.minute, 59))
+                        hourStr = String(format: "%02d", h)
+                        minuteStr = String(format: "%02d", m)
+                        onUpdate(nil, h, m)
+                    }
+                    .buttonStyle(ThemedButtonStyle(variant: .saveSmall, theme: theme, isDisabled: false))
+                    .focusable(false)
+                }
             }
-        }.padding(.vertical, 16).overlay(Rectangle().frame(height: 1).foregroundColor(theme.border), alignment: .bottom)
+        }
+        .padding(.vertical, 16)
+        .overlay(Rectangle().frame(height: 1).foregroundColor(theme.border), alignment: .bottom)
     }
-    private var isDirty: Bool { hourStr != String(format: "%02d", job.hour) || minuteStr != String(format: "%02d", job.minute) }
+
+    private var isDirty: Bool {
+        hourStr != String(format: "%02d", job.hour) || minuteStr != String(format: "%02d", job.minute)
+    }
 }
 
-// MARK: - Pages
+// MARK: - Sidebar
+
 struct SidebarView: View {
     @ObservedObject var viewModel: PipelineViewModel
     let theme: AppTheme
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) { LogoView(); Text("AI-PIPELINE").font(.system(size: 16, weight: .bold, design: .monospaced)).tracking(0.8).foregroundColor(theme.text) }.padding([.horizontal, .top], 24).padding(.bottom, 32)
+            HStack(spacing: 10) {
+                LogoView(theme: theme)
+                Text("AI-PIPELINE").font(.system(size: 16, weight: .bold, design: .monospaced)).tracking(0.8).foregroundColor(theme.text)
+            }
+            .padding([.horizontal, .top], 24)
+            .padding(.bottom, 32)
+
             VStack(spacing: 2) {
-                Button(action: { viewModel.page = "dashboard" }) { HStack(spacing: 10) { Image(systemName: "square.grid.2x2.fill"); Text("Dashboard") } }.buttonStyle(SidebarButtonStyle(isActive: viewModel.page == "dashboard", theme: theme))
-                Button(action: { viewModel.page = "schedule" }) { HStack(spacing: 10) { Image(systemName: "calendar"); Text("Schedule") } }.buttonStyle(SidebarButtonStyle(isActive: viewModel.page == "schedule", theme: theme))
-                Button(action: { viewModel.page = "logs" }) { HStack(spacing: 10) { Image(systemName: "doc.text"); Text("Logs") } }.buttonStyle(SidebarButtonStyle(isActive: viewModel.page == "logs", theme: theme))
-            }.padding(.horizontal, 12)
+                SidebarButton(title: "Dashboard", icon: "square.grid.2x2.fill", page: "dashboard", current: $viewModel.page, theme: theme)
+                SidebarButton(title: "Schedule", icon: "calendar", page: "schedule", current: $viewModel.page, theme: theme)
+                SidebarButton(title: "Logs", icon: "doc.text", page: "logs", current: $viewModel.page, theme: theme)
+            }
+            .padding(.horizontal, 12)
+
             Spacer()
+
             VStack(spacing: 12) {
+                if !viewModel.backendReachable {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("OFFLINE").font(.system(size: 10, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(theme.errorRed)
+                    .padding(.vertical, 6)
+                }
                 StatusPillView(status: viewModel.status, theme: theme)
-            }.padding(.horizontal, 24).padding(.top, 20).border(theme.border, width: 1).padding(.bottom, 24)
-        }.frame(width: 220).background(theme.bg)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .border(theme.border, width: 1)
+            .padding(.bottom, 24)
+        }
+        .frame(width: 220)
+        .background(theme.bg)
+    }
+}
+
+struct SidebarButton: View {
+    let title: String
+    let icon: String
+    let page: String
+    @Binding var current: String
+    let theme: AppTheme
+
+    var body: some View {
+        Button(action: { current = page }) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                Text(title)
+            }
+        }
+        .buttonStyle(SidebarButtonStyle(isActive: current == page, theme: theme))
+        .focusable(false)
     }
 }
 
 struct SidebarButtonStyle: ButtonStyle {
     let isActive: Bool, theme: AppTheme
-    
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -376,12 +915,9 @@ struct SidebarButtonStyle: ButtonStyle {
             .padding(.horizontal, 12).padding(.vertical, 12)
             .background(
                 ZStack {
+                    isActive ? theme.surface2 : (configuration.isPressed ? theme.surface2.opacity(0.5) : Color.clear)
                     if isActive {
-                        HalftonePattern(color: theme.text.opacity(0.8), density: 0.5)
-                    } else if configuration.isPressed {
-                        theme.surface2
-                    } else {
-                        Color.clear
+                        HalftonePattern(color: theme.accent.opacity(0.12), density: 0.75)
                     }
                 }
             )
@@ -390,94 +926,416 @@ struct SidebarButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Dashboard
+
 struct DashboardView: View {
     @ObservedObject var viewModel: PipelineViewModel
     let theme: AppTheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Dashboard").font(theme.headingFont).foregroundColor(theme.text)
                 Text("Monitor and control your job automation pipeline").font(theme.monoFont).foregroundColor(theme.muted)
-            }.padding(.bottom, 36)
-            if viewModel.status == "error" {
-                ThemedCard(theme: theme, borderColor: theme.errorRed) { Text("CONNECTION ERROR...") }.padding(.bottom, 20)
             }
+            .padding(.bottom, 36)
+
+            if let error = viewModel.errorMessage {
+                ThemedCard(theme: theme, borderColor: theme.errorRed) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.octagon.fill").foregroundColor(theme.errorRed)
+                        Text(error).font(theme.monoFont).foregroundColor(theme.errorRed)
+                        Spacer()
+                        Button("Dismiss") { viewModel.errorMessage = nil }
+                            .buttonStyle(ThemedButtonStyle(variant: .ghost, theme: theme, isDisabled: false))
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+
+            if !viewModel.backendReachable && !viewModel.backendStarting {
+                ThemedCard(theme: theme, borderColor: theme.errorRed) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "wifi.slash").foregroundColor(theme.errorRed)
+                            Text("Backend Offline").font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundColor(theme.errorRed)
+                        }
+                        Text("The pipeline engine could not be started automatically. Restart the app, or start it manually with:")
+                            .font(theme.monoFont)
+                            .foregroundColor(theme.text)
+                        Text("python3 -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000")
+                            .font(theme.monoFont)
+                            .foregroundColor(theme.accent)
+                            .padding(8)
+                            .background(theme.surface2)
+                            .border(theme.border, width: 1)
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+
             HStack(spacing: 14) {
                 StatBoxView(label: "Target Today", value: "\(viewModel.target)", isAccent: true, theme: theme)
                 StatBoxView(label: "Max Loops", value: "\(viewModel.maxLoops)", isAccent: false, theme: theme)
-                StatBoxView(label: "Pipeline", value: viewModel.status, isAccent: viewModel.status == "running", theme: theme)
-            }.padding(.bottom, 20)
+                StatBoxView(label: "Pipeline", value: viewModel.status.capitalized, isAccent: viewModel.status == "running", theme: theme)
+            }
+            .padding(.bottom, 20)
+
+            if let report = viewModel.report {
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Today’s Pipeline Report").font(.system(size: 11, weight: .bold, design: .monospaced)).tracking(1.2).foregroundColor(theme.muted)
+                        HStack(spacing: 14) {
+                            PlatformStatView(title: "LinkedIn", report: report.linkedin, theme: theme)
+                            PlatformStatView(title: "Naukri", report: report.naukri, theme: theme)
+                        }
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+
             ThemedCard(theme: theme) {
                 VStack(alignment: .leading, spacing: 24) {
                     Text("Pipeline Stages").font(.system(size: 11, weight: .bold, design: .monospaced)).tracking(1.2).foregroundColor(theme.muted)
-                    HStack(spacing: 0) {
-                        StageNodeView(label: "Scrape", iconName: "globe", isActive: viewModel.status == "running" && viewModel.activeStage == 0, isDone: viewModel.activeStage > 0, theme: theme)
-                        StageLineView(isDone: viewModel.activeStage > 0, theme: theme)
-                        StageNodeView(label: "AI Filter", iconName: "line.3.horizontal.decrease", isActive: viewModel.status == "running" && viewModel.activeStage == 1, isDone: viewModel.activeStage > 1, theme: theme)
-                        StageLineView(isDone: viewModel.activeStage > 1, theme: theme)
-                        StageNodeView(label: "Tailor", iconName: "pencil.and.outline", isActive: viewModel.status == "running" && viewModel.activeStage == 2, isDone: viewModel.activeStage > 2, theme: theme)
-                        StageLineView(isDone: viewModel.activeStage > 2, theme: theme)
-                        StageNodeView(label: "Apply", iconName: "paperplane.fill", isActive: viewModel.status == "running" && viewModel.activeStage == 3, isDone: viewModel.activeStage > 3, theme: theme)
-                        StageLineView(isDone: viewModel.activeStage > 3, theme: theme)
-                        StageNodeView(label: "Export", iconName: "square.and.arrow.down", isActive: viewModel.status == "running" && viewModel.activeStage == 4, isDone: viewModel.activeStage > 4, theme: theme)
-                    }.padding(.horizontal, 10)
+                    pipelineStages
                 }
-            }.padding(.bottom, 20)
+            }
+            .padding(.bottom, 20)
+
             ThemedCard(theme: theme) {
-                 VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 24) {
                     Text("Run Pipeline")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .tracking(1.2)
                         .foregroundColor(theme.muted)
-                    HStack(spacing: 10) {
-                        Button(action: { viewModel.startPipeline() }) { HStack(spacing: 7) { Image(systemName: "play.fill"); Text("Start") } }
-                        .buttonStyle(ThemedButtonStyle(variant: .accent, theme: theme, isDisabled: viewModel.status == "running"))
-                        .disabled(viewModel.status == "running")
-                        
-                        Button(action: { viewModel.stopPipeline() }) { HStack(spacing: 7) { Image(systemName: "stop.fill"); Text("Stop") } }
-                        .buttonStyle(ThemedButtonStyle(variant: .red, theme: theme, isDisabled: viewModel.status != "running"))
-                        .disabled(viewModel.status != "running")
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Custom mode selector to avoid system segmented picker color issues
+                        HStack(spacing: 0) {
+                            ModeButton(title: "Daily Quota", value: "quota", selection: $viewModel.mode, theme: theme)
+                            ModeButton(title: "Single Test", value: "single_test", selection: $viewModel.mode, theme: theme)
+                            ModeButton(title: "Resume", value: "resume", selection: $viewModel.mode, theme: theme)
+                        }
+
+                        HStack(spacing: 14) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("TARGET").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                                TextField("", value: $viewModel.target, format: .number)
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .frame(width: 80)
+                                    .padding(6)
+                                    .background(theme.surface2)
+                                    .border(theme.border, width: 1)
+                                    .textFieldStyle(.plain)
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("MAX LOOPS").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                                TextField("", value: $viewModel.maxLoops, format: .number)
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .frame(width: 80)
+                                    .padding(6)
+                                    .background(theme.surface2)
+                                    .border(theme.border, width: 1)
+                                    .textFieldStyle(.plain)
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("JOBS/BATCH").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                                TextField("", value: $viewModel.jobs, format: .number)
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(theme.text)
+                                    .frame(width: 80)
+                                    .padding(6)
+                                    .background(theme.surface2)
+                                    .border(theme.border, width: 1)
+                                    .textFieldStyle(.plain)
+                            }
+                            Spacer()
+                        }
+
+                        HStack(spacing: 10) {
+            Button(action: { viewModel.startPipeline() }) {
+                HStack(spacing: 7) { Image(systemName: "play.fill"); Text("Start") }
+            }
+            .buttonStyle(ThemedButtonStyle(variant: .accent, theme: theme, isDisabled: viewModel.status == "running" || !viewModel.backendReachable))
+            .disabled(viewModel.status == "running" || !viewModel.backendReachable)
+            .focusable(false)
+
+            Button(action: { viewModel.stopPipeline() }) {
+                HStack(spacing: 7) { Image(systemName: "stop.fill"); Text("Stop") }
+            }
+            .buttonStyle(ThemedButtonStyle(variant: .red, theme: theme, isDisabled: viewModel.status != "running"))
+            .disabled(viewModel.status != "running")
+            .focusable(false)
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    private var pipelineStages: some View {
+        let activeStage = stageIndex(from: viewModel.status, logs: viewModel.logs)
+        return HStack(spacing: 0) {
+            StageNodeView(label: "Scrape", iconName: "globe", isActive: activeStage == 0, isDone: activeStage > 0, theme: theme)
+            StageLineView(isDone: activeStage > 0, theme: theme)
+            StageNodeView(label: "AI Filter", iconName: "line.3.horizontal.decrease", isActive: activeStage == 1, isDone: activeStage > 1, theme: theme)
+            StageLineView(isDone: activeStage > 1, theme: theme)
+            StageNodeView(label: "Tailor", iconName: "pencil.and.outline", isActive: activeStage == 2, isDone: activeStage > 2, theme: theme)
+            StageLineView(isDone: activeStage > 2, theme: theme)
+            StageNodeView(label: "Apply", iconName: "paperplane.fill", isActive: activeStage == 3, isDone: activeStage > 3, theme: theme)
+            StageLineView(isDone: activeStage > 3, theme: theme)
+            StageNodeView(label: "Export", iconName: "square.and.arrow.down", isActive: activeStage == 4, isDone: activeStage > 4, theme: theme)
+        }
+        .padding(.horizontal, 10)
+    }
+
+    private func stageIndex(from status: String, logs: [String]) -> Int {
+        guard status == "running" else { return -1 }
+        let keywords: [(String, Int)] = [
+            ("STAGE 4/4 ✅ Export complete", 4),
+            ("STAGE 3/4 ✅ Auto-Applying complete", 3),
+            ("STAGE 3/5 ✅ Tailoring complete", 2),
+            ("STAGE 2/5 ✅ Filtering complete", 1),
+            ("STAGE 1/5 ✅ Scraping complete", 0)
+        ]
+        for (keyword, idx) in keywords {
+            if logs.contains(where: { $0.contains(keyword) }) { return idx }
+        }
+        return 0
+    }
+}
+
+struct ModeButton: View {
+    let title: String
+    let value: String
+    @Binding var selection: String
+    let theme: AppTheme
+
+    var body: some View {
+        Button(action: { selection = value }) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundColor(isSelected ? theme.bg : theme.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(isSelected ? theme.accent : theme.surface2)
+                .border(theme.border, width: 1)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+    }
+
+    private var isSelected: Bool { selection == value }
+}
+
+struct PlatformStatView: View {
+    let title: String
+    let report: PlatformReport
+    let theme: AppTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased()).font(.system(size: 11, weight: .bold, design: .monospaced)).tracking(0.8).foregroundColor(theme.muted)
+            HStack(spacing: 12) {
+                miniStat(label: "Scraped", value: report.scraped)
+                miniStat(label: "Matched", value: report.matched)
+                miniStat(label: "Applied", value: report.applied)
+                miniStat(label: "Failed", value: report.failed)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(theme.surface2)
+        .border(theme.border, width: 1)
+    }
+
+    private func miniStat(label: String, value: Int) -> some View {
+        VStack(spacing: 4) {
+            Text("\(value)").font(.system(size: 18, weight: .bold, design: .monospaced)).foregroundColor(theme.text)
+            Text(label).font(.system(size: 9, weight: .semibold, design: .monospaced)).foregroundColor(theme.muted)
+        }
+    }
+}
+
+// MARK: - Schedule Page
+
+struct ScheduleView: View {
+    @ObservedObject var viewModel: PipelineViewModel
+    let theme: AppTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Schedule").font(theme.headingFont).foregroundColor(theme.text)
+                Text("Manage daily cron jobs").font(theme.monoFont).foregroundColor(theme.muted)
+            }
+            .padding(.bottom, 36)
+
+            if !viewModel.backendReachable {
+                backendOfflineBanner
+                    .padding(.bottom, 20)
+            }
+
+            ThemedCard(theme: theme) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if viewModel.cronJobs.isEmpty {
+                        Text("No scheduled jobs found. Add them via data/schedule.json.")
+                            .font(theme.monoFont)
+                            .foregroundColor(theme.muted)
+                            .padding(.vertical, 20)
+                    } else {
+                        ForEach(viewModel.cronJobs) { job in
+                            CronRowView(job: job, theme: theme) { enabled, hour, minute in
+                                viewModel.updateCron(jobId: job.id, enabled: enabled, hour: hour, minute: minute)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var backendOfflineBanner: some View {
+        ThemedCard(theme: theme, borderColor: theme.errorRed) {
+            HStack(spacing: 10) {
+                Image(systemName: "wifi.slash").foregroundColor(theme.errorRed)
+                Text("Backend offline — schedule updates will not work.")
+                    .font(theme.monoFont)
+                    .foregroundColor(theme.errorRed)
+            }
+        }
+    }
+}
+
+// MARK: - Logs Page
+
+struct LogsView: View {
+    @ObservedObject var viewModel: PipelineViewModel
+    let theme: AppTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Logs").font(theme.headingFont).foregroundColor(theme.text)
+                Text("Live pipeline output").font(theme.monoFont).foregroundColor(theme.muted)
+            }
+            .padding(.bottom, 36)
+
+            if !viewModel.backendReachable {
+                backendOfflineBanner
+                    .padding(.bottom, 20)
+            }
+
+            ThemedCard(theme: theme) {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { _, line in
+                                LogLineView(line: line, theme: theme)
+                            }
+                        }
+                        .id("logBottom")
+                    }
+                    .frame(minHeight: 400)
+                    .onChange(of: viewModel.logs.count) {
+                        withAnimation { proxy.scrollTo("logBottom", anchor: .bottom) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var backendOfflineBanner: some View {
+        ThemedCard(theme: theme, borderColor: theme.errorRed) {
+            HStack(spacing: 10) {
+                Image(systemName: "wifi.slash").foregroundColor(theme.errorRed)
+                Text("Backend offline — start `python3 src/api/main.py` to see logs.")
+                    .font(theme.monoFont)
+                    .foregroundColor(theme.errorRed)
             }
         }
     }
 }
 
 // MARK: - Main App Structure
+
 struct ContentView: View {
     @StateObject var viewModel = PipelineViewModel()
-    
+    let theme = AppTheme.default()
+
     var body: some View {
-        let theme = AppTheme.from()
         HStack(spacing: 0) {
             SidebarView(viewModel: viewModel, theme: theme)
             Rectangle().fill(theme.border).frame(width: 1)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if viewModel.page == "dashboard" {
+                    switch viewModel.page {
+                    case "dashboard":
                         DashboardView(viewModel: viewModel, theme: theme)
-                    } else {
-                        // Placeholder for other views
-                        Text("\(viewModel.page) View").font(theme.headingFont)
+                    case "schedule":
+                        ScheduleView(viewModel: viewModel, theme: theme)
+                    case "logs":
+                        LogsView(viewModel: viewModel, theme: theme)
+                    default:
+                        DashboardView(viewModel: viewModel, theme: theme)
                     }
                 }
-                .padding(40).frame(maxWidth: 860, alignment: .topLeading)
+                .padding(40)
+                .frame(maxWidth: 960, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(theme.bg)
+            .overlay(
+                Group {
+                    if viewModel.backendStarting {
+                        ZStack {
+                            theme.bg.opacity(0.92)
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                    .tint(theme.accent)
+                                Text("Starting pipeline engine…")
+                                    .font(theme.monoFont)
+                                    .foregroundColor(theme.text)
+                            }
+                        }
+                    }
+                }
+            )
         }
         .frame(minWidth: 900, minHeight: 650)
+        .task {
+            await viewModel.prepareBackend()
+        }
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) { BackendManager.shared.startServer() }
-    func applicationWillTerminate(_ notification: Notification) { BackendManager.shared.stopServer() }
+    func applicationWillTerminate(_ notification: Notification) {
+        // Shut down the backend only if:
+        //   1. We started it ourselves, AND
+        //   2. No pipeline is currently running.
+        // If a pipeline is running (whether started by us or pre-existing), leave
+        // the backend alive so the run can complete and write its final state.
+        let manager = BackendManager.shared
+        if !manager.isAlreadyRunning, manager.pipelineWasRunningAtLaunch == false {
+            let reachable = manager.backendIsReachableNow()
+            if reachable {
+                let running = manager.pipelineIsRunningNow()
+                if !running {
+                    manager.stopServer()
+                }
+            }
+        }
+    }
 }
 
 struct AiAutomationApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -486,3 +1344,5 @@ struct AiAutomationApp: App {
         .windowToolbarStyle(.unifiedCompact)
     }
 }
+
+// Entry point is in mac/main.swift: AiAutomationApp.main()

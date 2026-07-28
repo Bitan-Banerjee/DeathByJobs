@@ -24,6 +24,16 @@ __pycache__/
 
 # Temporary or run-specific files
 last_run.md
+latest_run.md
+
+# Agent / context files
+context/OPENCODE_CONTEXT.md
+
+# Compiled macOS app bundle artifacts
+AiAutomation.app/Contents/MacOS/AiAutomation
+AiAutomation.app/Contents/Info.plist
+AiAutomation.app/Contents/Resources/
+AiAutomation.app/Contents/_CodeSignature/
 
 # IDE / Editor specific settings
 .vscode/
