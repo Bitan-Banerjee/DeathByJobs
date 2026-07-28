@@ -8,24 +8,32 @@ import sys
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
+# Path setup
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
+
 # Add auth helper
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils'))
 try:
-    from auth_helper import ensure_naukri_session
+    from utils.auth_helper import ensure_naukri_session
 except ImportError:
     def ensure_naukri_session(page, context): return True
 
 try:
-    from linkedin_scraper import is_title_relevant, human_delay, safe_goto
+    from automation.linkedin_scraper import is_title_relevant, human_delay, safe_goto
 except ImportError:
     pass
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from utils.config_loader import load_profile, get_excluded_companies
+
 JOBS_FILE = os.path.join(BASE_DIR, 'data', 'jobs.json')
 SESSION_FILE = os.path.join(BASE_DIR, 'data', 'naukri_session.json')
 SEEN_JOBS_FILE = os.path.join(BASE_DIR, 'data', 'naukri_seen_jobs.json')
 COMPANY_BEHAVIOR_FILE = os.path.join(BASE_DIR, 'data', 'naukri_company_behavior.json')
 STATE_FILE = os.path.join(BASE_DIR, 'data', 'naukri_state.json')
+
+_profile = load_profile()
+_excluded_companies = get_excluded_companies(_profile)
 
 def scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=25, output_file=JOBS_FILE):
     # Load memory to prevent duplicates
@@ -89,17 +97,29 @@ def scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=25, o
             human_delay(3, 5)
             
             # --- BROWSER LEVEL FILTERING ---
+            browser_filters = ["Applied", "Walk-in", "Sponsored", "Premium", "Lead", "Manager", "Director"]
+            filters_json = json.dumps(browser_filters)
+            excluded_json = json.dumps(_excluded_companies)
             print("🪄 Applying browser-level filters (DOM removal)...")
-            page.evaluate("""() => {
-                const filters = ["Applied", "Walk-in", "Sponsored", "Premium", "Lead", "Manager", "Director"];
+            script = """
+            () => {
+                const filters = %s;
+                const excludedCompanies = %s;
                 const cards = document.querySelectorAll('.srp-jobtuple-wrapper');
                 cards.forEach(card => {
                     const text = card.innerText;
-                    if (filters.some(f => text.includes(f))) {
+                    const hasFlag = filters.some(f => text.includes(f));
+                    const isExcluded = excludedCompanies.some(c => {
+                        const regex = new RegExp('\\b' + c + '\\b', 'i');
+                        return regex.test(text);
+                    });
+                    if (hasFlag || isExcluded) {
                         card.remove();
                     }
                 });
-            }""")
+            }
+            """ % (filters_json, excluded_json)
+            page.evaluate(script)
             # -------------------------------
 
             cards = page.locator(".srp-jobtuple-wrapper")
@@ -127,7 +147,11 @@ def scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=25, o
                     
                 company_el = card.locator("a.comp-name").first
                 company = company_el.inner_text().strip() if company_el.is_visible() else "Unknown"
-                
+
+                if any(excluded.lower() == company.lower() for excluded in _excluded_companies):
+                    print(f"  ⏭️ Skipped (Excluded Company): {company}")
+                    continue
+
                 # Check Company Behavior Matrix to skip known external-only spammers
                 # Only skip if internal_apply count is 0 and external_apply count is significantly high (e.g., >= 5)
                 stats = company_behavior.get(company, {"internal": 0, "external": 0})
@@ -207,6 +231,12 @@ def scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=25, o
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape Naukri job postings.")
     parser.add_argument("--max", type=int, default=10, help="Maximum number of jobs to scrape.")
+    parser.add_argument("--keyword", type=str, default=None, help="Override search keyword.")
+    parser.add_argument("--location", type=str, default=None, help="Override search location.")
     args = parser.parse_args()
-    
-    scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=args.max)
+
+    search_cfg = load_profile().get("search", {})
+    keyword = args.keyword or search_cfg.get("naukri_keyword", "Data Engineer")
+    location = args.location or search_cfg.get("location", "India")
+
+    scrape_naukri_jobs(keyword=keyword, location=location, max_jobs=args.max)

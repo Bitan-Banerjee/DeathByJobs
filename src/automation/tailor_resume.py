@@ -2,84 +2,60 @@ import os
 import json
 import time
 import re
+import sys
 from datetime import datetime
-from dotenv import load_dotenv
-from google import genai
 from playwright.sync_api import sync_playwright
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
 
-api_keys = []
-for key_name in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
-    if os.getenv(key_name):
-        api_keys.append(os.getenv(key_name).strip())
+from utils.config_loader import load_profile, get_resume_paths
+from utils.llm_client import generate_text, LLMError
 
 MATCHED_PATH = os.path.join(BASE_DIR, 'data', 'matched_jobs.json')
-BASE_RESUME_PATH = os.path.join(BASE_DIR, 'base_resume.md')
-GENERIC_RESUME_PATH = os.path.join(BASE_DIR, 'resume.docx')
 TEMPLATE_PATH = os.path.join(BASE_DIR, 'templates', 'cv-template.html')
 OUTPUT_DIR = os.path.join(BASE_DIR, 'outputs', 'resumes')
 
-def generate_tailored_html(job_title, job_desc, base_resume):
-    if not api_keys:
-        raise Exception("No Gemini API keys found in .env file.")
-        
-    prompt = f"""
-    You are an expert executive resume writer. 
-    
-    BASE RESUME (Markdown):
-    {base_resume}
-    
-    JOB TARGET: {job_title}
-    JOB DESCRIPTION:
-    {job_desc}
-    
-    INSTRUCTIONS:
-    1. Read the Base Resume and the Job Description.
-    2. Tailor the "Professional Summary" and "Experience" bullet points to subtly highlight the skills and keywords most relevant to the Job Target.
-    3. STRICT RULE: You MUST preserve the exact Company Names, Job Titles, Employment Dates, Education, and Certifications. Do NOT omit or change them.
-    4. STRICT RULE: Do NOT invent new experience, fake metrics, or hallucinate skills the candidate does not have. Only rephrase existing points to highlight relevant keywords.
-    5. Keep the output clean, professional, and concise. Ensure ALL sections from the Base Resume (including Education and Certifications) are included in the final output.
-    6. Convert the final tailored resume directly into clean HTML tags (e.g., <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>).
-    7. Do NOT include <html>, <head>, <style>, or <body> tags. Output ONLY the inner HTML content to be injected.
-    8. Do NOT wrap the output in ```html codeblocks. Return raw text.
-    """
-    
-    fallback_models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest']
-    for key_idx, api_key in enumerate(api_keys):
-        client = genai.Client(api_key=api_key)
-        for model_name in fallback_models:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                text = text.replace("```html", "").replace("```", "").strip()
-                
-                # Safely extract inner body if the AI hallucinated the full HTML wrapper
-                body_match = re.search(r"<body[^>]*>(.*?)</body>", text, re.IGNORECASE | re.DOTALL)
-                if body_match:
-                    text = body_match.group(1)
-                    
-                return text.strip()
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    print(f"  ⚠️ Rate Limit hit on {model_name} (Key {key_idx + 1}). Switching...")
-                    continue
-                elif "404" in error_str or "NOT_FOUND" in error_str:
-                    print(f"  ⚠️ Model {model_name} not found. Switching...")
-                    continue
-                elif "503" in error_str or "UNAVAILABLE" in error_str:
-                    print(f"  ⚠️ 503 Unavailable on {model_name} (Key {key_idx + 1}). Switching...")
-                    continue
-                else:
-                    print(f"  ⚠️ API Error on {model_name} (Key {key_idx + 1}): {error_str}")
-                    continue
-                    
-    raise Exception("Gemini API limits exhausted during tailoring across all available keys. Halting.")
+_profile = load_profile()
+GENERIC_RESUME_PATH, BASE_RESUME_PATH = get_resume_paths(_profile)
+
+
+def generate_tailored_html(job_title, job_desc, base_resume, profile=None):
+    prompt = f"""You are an expert executive resume writer.
+
+BASE RESUME (Markdown):
+{base_resume}
+
+JOB TARGET: {job_title}
+JOB DESCRIPTION:
+{job_desc}
+
+INSTRUCTIONS:
+1. Read the Base Resume and the Job Description.
+2. Tailor the "Professional Summary" and "Experience" bullet points to subtly highlight the skills and keywords most relevant to the Job Target.
+3. STRICT RULE: You MUST preserve the exact Company Names, Job Titles, Employment Dates, Education, and Certifications. Do NOT omit or change them.
+4. STRICT RULE: Do NOT invent new experience, fake metrics, or hallucinate skills the candidate does not have. Only rephrase existing points to highlight relevant keywords.
+5. Keep the output clean, professional, and concise. Ensure ALL sections from the Base Resume (including Education and Certifications) are included in the final output.
+6. Convert the final tailored resume directly into clean HTML tags (e.g., <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>).
+7. Do NOT include <html>, <head>, <style>, or <body> tags. Output ONLY the inner HTML content to be injected.
+8. Do NOT wrap the output in ```html codeblocks. Return raw text.
+"""
+
+    try:
+        text = generate_text(prompt, temperature=0.2)
+    except LLMError as e:
+        print(f"  ⚠️ LLM tailoring failed: {e}")
+        raise
+
+    text = text.replace("```html", "").replace("```", "").strip()
+
+    # Safely extract inner body if the AI hallucinated the full HTML wrapper
+    body_match = re.search(r"<body[^>]*>(.*?)</body>", text, re.IGNORECASE | re.DOTALL)
+    if body_match:
+        text = body_match.group(1)
+
+    return text.strip()
 
 def create_pdf_from_html(html_content, output_path):
     with sync_playwright() as p:
@@ -92,11 +68,14 @@ def create_pdf_from_html(html_content, output_path):
         browser.close()
 
 def tailor_resumes(matched_path=MATCHED_PATH):
+    profile = load_profile()
+    generic_resume_path, base_resume_path = get_resume_paths(profile)
+
     missing = []
     if not os.path.exists(matched_path): missing.append(f"matched_jobs.json\n    Expected at: {matched_path}")
-    if not os.path.exists(BASE_RESUME_PATH): missing.append(f"base_resume.md\n    Expected at: {BASE_RESUME_PATH}")
+    if not os.path.exists(base_resume_path): missing.append(f"base_resume.md\n    Expected at: {base_resume_path}")
     if not os.path.exists(TEMPLATE_PATH): missing.append(f"cv-template.html\n    Expected at: {TEMPLATE_PATH}")
-    
+
     if missing:
         print("❌ Missing required files:")
         for m in missing: print(f"  - {m}")
@@ -107,7 +86,7 @@ def tailor_resumes(matched_path=MATCHED_PATH):
     os.makedirs(daily_output_dir, exist_ok=True)
 
     with open(matched_path, 'r') as f: jobs = json.load(f).get('approved_jobs', [])
-    with open(BASE_RESUME_PATH, 'r') as f: base_resume = f.read()
+    with open(base_resume_path, 'r') as f: base_resume = f.read()
     with open(TEMPLATE_PATH, 'r') as f: html_template = f.read()
 
     if "{{content}}" not in html_template:
@@ -123,10 +102,10 @@ def tailor_resumes(matched_path=MATCHED_PATH):
         
         if match_type == 'potential':
             print(f"\n  ℹ️ Potential match ({score}) for {company}. Using generic resume.")
-            if os.path.exists(GENERIC_RESUME_PATH):
-                job['tailored_resume_path'] = GENERIC_RESUME_PATH
+            if os.path.exists(generic_resume_path):
+                job['tailored_resume_path'] = str(generic_resume_path)
             else:
-                print(f"  ⚠️ Generic resume not found at {GENERIC_RESUME_PATH}!")
+                print(f"  ⚠️ Generic resume not found at {generic_resume_path}!")
             continue
 
         if score < 80:

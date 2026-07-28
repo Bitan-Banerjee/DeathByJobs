@@ -1,41 +1,43 @@
 import os
 import json
 import time
-from dotenv import load_dotenv
-from google import genai
+import sys
+import re
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
 
-api_keys = []
-for key_name in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
-    if os.getenv(key_name):
-        api_keys.append(os.getenv(key_name).strip())
+from utils.config_loader import load_profile, get_excluded_companies
+from utils.llm_client import generate_json, LLMError, get_batch_delay_seconds
 
 SCRAPED_PATH = os.path.join(BASE_DIR, 'data', 'jobs.json')
 MATCHED_PATH = os.path.join(BASE_DIR, 'data', 'matched_jobs.json')
-PROFILE_PATH = os.path.join(BASE_DIR, 'config', 'profile.json')
 
-BATCH_SIZE = 10  # Balanced for Gemini Flash to handle reasoning tokens safely
-DELAY_BETWEEN_BATCHES = 15  # 15 seconds delay to stay safely under the 5 RPM limit
+_profile = load_profile()
+_filters = _profile.get("filters", {})
+_title_cfg = _filters.get("title", {})
+BATCH_SIZE = 10
+DELAY_BETWEEN_BATCHES = get_batch_delay_seconds()
 
-def passes_basic_filter(title, company):
+def passes_basic_filter(title, company, profile=None):
+    if profile is None:
+        profile = _profile
     title_lower = title.lower()
     company_lower = company.lower()
-    
-    if 'turing' in company_lower:
+
+    excluded_companies = get_excluded_companies(profile)
+    if any(excluded.lower() in company_lower for excluded in excluded_companies):
         return False
 
-    red_flags = ['director', 'manager', 'vp', 'lead', 'head']
+    title_cfg = profile.get("filters", {}).get("title", _title_cfg)
+    red_flags = title_cfg.get("red_flags", _title_cfg.get("red_flags", []))
     for flag in red_flags:
-        if flag in title_lower.split():
+        if flag.lower() in title_lower.split() or re.search(r'\b' + re.escape(flag.lower()) + r'\b', title_lower):
             return False
     return True
 
 def evaluate_job_batch(batch_jobs, profile_data):
-    if not api_keys:
-        raise Exception("No Gemini API keys found in .env file.")
-        
     # Create a compact payload for the AI to read
     jobs_payload = []
     for i, job in enumerate(batch_jobs):
@@ -46,90 +48,78 @@ def evaluate_job_batch(batch_jobs, profile_data):
             "description": job.get('description', '')
         })
 
-    dealbreakers_text = "\n    ".join(profile_data.get('dealbreakers', []))
-    skills_text = ", ".join(profile_data.get('core_skills', []))
+    dealbreakers_text = "\n    ".join(profile_data.get('filters', {}).get('dealbreakers', []))
+    skills_text = ", ".join(profile_data.get('target_profile', {}).get('core_skills', []))
+    target_role = profile_data.get('target_profile', {}).get('role', 'Unknown')
+    experience = profile_data.get('target_profile', {}).get('experience_range', 'Not specified')
+    variance = profile_data.get('filters', {}).get('match_variance', 'moderate')
 
-    prompt = f"""
-    You are an expert technical recruiter. 
-    
-    Candidate Profile:
-    Target Role: {profile_data.get('target_role')}
-    Candidate Experience: {profile_data.get('candidate_experience')}
-    Core Skills: {skills_text}
-    
-    CRITICAL DEALBREAKERS (Reject if ANY are true):
-    {dealbreakers_text}
+    # Build skill-flexibility wording based on user-selected variance.
+    variance_rules = {
+        "strict": (
+            "Tool requirements are STRICT. Only consider a job a match if it explicitly mentions "
+            "the candidate's core skills. Do not infer analogous tools."
+        ),
+        "moderate": (
+            "Analogous skills are acceptable when a direct skill is not present. "
+            "Example: AWS, Azure, and GCP are considered analogous cloud platforms. "
+            "Glue and Databricks are considered analogous data tools."
+        ),
+        "loose": (
+            "Use broad domain matching. Any role in the same field (data engineering, cloud, backend data infrastructure) "
+            "can be a match if the description aligns with the candidate's overall background."
+        ),
+    }
+    variance_rule = variance_rules.get(variance, variance_rules["moderate"])
 
-    SKILL FLEXIBILITY RULES:
-    1. Cloud Platforms: AWS, Azure, and GCP are considered analogous. If a job requires Azure but the candidate has AWS, it is a "potential" match.
-    2. Data Tools: Glue and Databricks are considered analogous. 
-    3. Experience: Years of experience are strict dealbreakers if specified in dealbreakers.
+    prompt = f"""You are an expert technical recruiter.
 
-    Evaluate the following batch of jobs. 
-    Return ONLY a valid JSON object mapping the "id" to an object containing:
-    - "reasoning": Step-by-step reasoning.
-    - "score": 0-100 based on skill alignment.
-    - "match": boolean (true/false).
-    - "match_type": "direct" (strong alignment) or "potential" (analogous skills like AWS vs Azure).
+Candidate Profile:
+Target Role: {target_role}
+Candidate Experience: {experience}
+Core Skills: {skills_text}
+Match Variance Level: {variance}
 
-    Format exactly like this:
-    {{
-      "0": {{"reasoning": "...", "score": 85, "match": true, "match_type": "direct"}},
-      "1": {{"reasoning": "...", "score": 75, "match": true, "match_type": "potential"}}
-    }}
+CRITICAL DEALBREAKERS (Reject if ANY are true):
+{dealbreakers_text}
 
-    Jobs to evaluate:
-    '''
-    {json.dumps(jobs_payload)}
-    '''
-    """
-    
-    fallback_models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest']
-    
-    for key_idx, api_key in enumerate(api_keys):
-        client = genai.Client(api_key=api_key)
-        for model_name in fallback_models:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                if text.startswith("```json"): text = text[7:-3].strip()
-                elif text.startswith("```"): text = text[3:-3].strip()
-                return json.loads(text)
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    print(f"  ⚠️ 429 Rate Limit hit on {model_name} (Key {key_idx + 1}). Switching...")
-                    continue
-                elif "404" in error_str or "NOT_FOUND" in error_str:
-                    print(f"  ⚠️ Model {model_name} not found. Switching...")
-                    continue
-                elif "503" in error_str or "UNAVAILABLE" in error_str:
-                    print(f"  ⚠️ 503 Service Unavailable on {model_name} (Key {key_idx + 1}). Switching...")
-                    continue
-                else:
-                    print(f"  ⚠️ API Error on batch with {model_name} (Key {key_idx + 1}): {error_str}")
-                    continue
-                    
-    raise Exception("Gemini API limits exhausted across all available keys. Halting to prevent data loss.")
+SKILL FLEXIBILITY RULES:
+{variance_rule}
+
+Evaluate the following batch of jobs.
+Return ONLY a valid JSON object mapping the "id" to an object containing:
+- "reasoning": Step-by-step reasoning.
+- "score": 0-100 based on skill alignment.
+- "match": boolean (true/false).
+- "match_type": "direct" (strong alignment) or "potential" (analogous skills).
+
+Format exactly like this:
+{{
+  "0": {{"reasoning": "...", "score": 85, "match": true, "match_type": "direct"}},
+  "1": {{"reasoning": "...", "score": 75, "match": true, "match_type": "potential"}}
+}}
+
+Jobs to evaluate:
+'''
+{json.dumps(jobs_payload)}
+'''
+"""
+
+    try:
+        return generate_json(prompt, temperature=0.2)
+    except LLMError as e:
+        print(f"  ⚠️ LLM failed for batch: {e}")
+        raise
 
 def match_jobs_batched(scraped_path=SCRAPED_PATH, matched_path=MATCHED_PATH):
     start_time = time.time()
     if not os.path.exists(scraped_path):
         print(f"❌ Missing {scraped_path}.")
         return
-        
-    if not os.path.exists(PROFILE_PATH):
-        print(f"❌ Missing {PROFILE_PATH}. Please create profile.json in the root directory.")
-        return
-        
-    try:
-        with open(PROFILE_PATH, 'r') as f:
-            profile_data = json.load(f)
-    except json.JSONDecodeError:
-        print(f"❌ Error: {PROFILE_PATH} is empty or contains invalid JSON.")
+
+    profile_data = load_profile()
+    if not profile_data:
+        print("❌ Missing or invalid profile.json. Please create it in the config/ directory.")
         return
         
     try:

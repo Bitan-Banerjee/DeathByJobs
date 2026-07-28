@@ -1,0 +1,44 @@
+{
+  "active_provider": "gemini",
+  "providers": {
+    "gemini": {
+      "enabled": true,
+      "api_key_env": "GEMINI_API_KEY",
+      "models": [
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest"
+      ],
+      "rpm_limit": 5,
+      "delay_between_batches_seconds": 15
+    },
+    "openai": {
+      "enabled": false,
+      "api_key_env": "OPENAI_API_KEY",
+      "models": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "rpm_limit": 10
+    },
+    "anthropic": {
+      "enabled": false,
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "models": [
+        "claude-3-5-haiku-latest",
+        "claude-3-5-sonnet-latest"
+      ],
+      "rpm_limit": 10
+    },
+    "local": {
+      "enabled": false,
+      "api_key_env": "LOCAL_API_KEY",
+      "base_url": "http://localhost:11434/v1",
+      "models": [
+        "llama3.2",
+        "gemma2"
+      ],
+      "rpm_limit": 1000
+    }
+  }
+}

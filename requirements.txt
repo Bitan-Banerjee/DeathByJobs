@@ -4,6 +4,8 @@ apscheduler
 playwright
 playwright-stealth
 python-dotenv
-google-generativeai
-pywebview
+google-genai
+python-docx
+openai
+anthropic
 pydantic

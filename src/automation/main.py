@@ -30,6 +30,8 @@ try:
     from tailor_resume import tailor_resumes
     from utils.export_tracker import export_to_excel
     from utils.naukri_resume_uploader import upload_resume
+    from utils.config_loader import load_profile, get_search_keywords
+    from utils.resume_parser import ensure_base_resume
 except ImportError as e:
     print(f"❌ Failed to import a necessary script. Make sure all scripts are in the /scripts folder. Error: {e}")
     sys.exit(1)
@@ -299,15 +301,17 @@ def run_linkedin_pipeline(max_jobs=25, start_stage=1):
     print("🚀🚀🚀 STARTING LINKEDIN PIPELINE 🚀🚀🚀")
     print(f"📍 Starting from STAGE {start_stage}")
     print("=" * 50)
-    
+
     scraped_path = os.path.join(BASE_DIR, 'data', 'linkedin_jobs.json')
     matched_path = os.path.join(BASE_DIR, 'data', 'linkedin_matched_jobs.json')
-    
+
+    keyword, _, location = get_search_keywords()
+
     if start_stage <= 1:
         try:
             print("\n[STAGE 1/5] 🌐 Scraping fresh jobs from LinkedIn...")
             max_pages = (max_jobs // 25) + 2
-            scrape_linkedin_jobs(keyword="Data Engineer", location="India", max_pages=max_pages, max_jobs=max_jobs, output_file=scraped_path)
+            scrape_linkedin_jobs(keyword=keyword, location=location, max_pages=max_pages, max_jobs=max_jobs, output_file=scraped_path)
             print("[STAGE 1/5] ✅ Scraping complete.")
             time.sleep(2)
         except Exception as e:
@@ -329,6 +333,7 @@ def run_linkedin_pipeline(max_jobs=25, start_stage=1):
     if start_stage <= 3:
         try:
             print("\n[STAGE 3/5] ✍️ Tailoring resumes for approved jobs...")
+            ensure_base_resume()
             tailor_resumes(matched_path=matched_path)
             print("[STAGE 3/5] ✅ Tailoring complete.")
             time.sleep(2)
@@ -379,10 +384,12 @@ def run_naukri_pipeline(max_jobs=25, start_stage=1, refresh_profile=True):
         except Exception as e:
             print(f"\n[WARNING] ⚠️ Naukri Profile refresh failed: {e}. Continuing...")
 
+    _, naukri_keyword, location = get_search_keywords()
+
     if start_stage <= 1:
         try:
             print("\n[STAGE 1/4] 🌐 Scraping fresh jobs from Naukri...")
-            scrape_naukri_jobs(keyword="Data Engineer", location="India", max_jobs=max_jobs, output_file=scraped_path)
+            scrape_naukri_jobs(keyword=naukri_keyword, location=location, max_jobs=max_jobs, output_file=scraped_path)
             print("[STAGE 1/4] ✅ Scraping complete.")
             time.sleep(2)
         except Exception as e:

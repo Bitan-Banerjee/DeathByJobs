@@ -13,6 +13,10 @@ __pycache__/
 /outputs/
 /logs/
 /Job_Applications_Tracker.csv
+# Personal candidate config (examples are tracked)
+/config/profile.json
+/config/providers.json
+base_resume.md
 
 # Session files that might be created by automation scripts
 *_session.json

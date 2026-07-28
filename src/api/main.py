@@ -15,11 +15,29 @@ import atexit
 # --- PATH SETUP ---
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.dirname(BRIDGE_DIR)) # Adjusted to be project root
+SRC_DIR = os.path.join(BASE_DIR, "src")
 sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, SRC_DIR)
 # Correctly locate the script directory
 SCRIPTS_DIR = os.path.join(BASE_DIR, "src", "automation")
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
+
+# --- Config / onboarding helpers ------------------------------------------------
+from utils.config_loader import (
+    load_profile,
+    load_providers,
+    save_profile,
+    save_providers,
+    profile_exists,
+    providers_exists,
+    is_configured,
+    get_env_key_name,
+    get_resume_paths,
+    DEFAULT_PROFILE,
+    DEFAULT_PROVIDERS,
+)
+from utils.resume_parser import derive_base_resume
 
 
 app = FastAPI(title="AI Job Pipeline API")
@@ -45,6 +63,25 @@ class CronUpdate(BaseModel):
     enabled: bool | None = None
     hour: int | None = None
     minute: int | None = None
+
+class OnboardingPayload(BaseModel):
+    candidate_name: str
+    candidate_email: str
+    target_role: str
+    experience_years: int
+    experience_range: str
+    notice_period: str
+    serving_notice: bool
+    core_skills: list[str]
+    linkedin_keyword: str
+    naukri_keyword: str
+    location: str
+    match_variance: str
+    excluded_companies: list[str]
+    current_employer: str
+    provider: str
+    api_key: str
+    analogous_skills: dict | None = None
 
 # ── Scheduled Job Functions ───────────────────────────────────────────────────
 
@@ -368,3 +405,151 @@ async def update_cron_job(update: CronUpdate):
     updated_job_to_return = next((job for job in config["jobs"] if job["id"] == update.job_id), None)
 
     return {"status": "updated", "job": updated_job_to_return}
+
+
+# ── Onboarding / Config endpoints ─────────────────────────────────────────────
+
+@app.get("/onboarding/status")
+async def onboarding_status():
+    """Return whether the tool has been configured for this user."""
+    return {
+        "configured": is_configured(),
+        "profile_exists": profile_exists(),
+        "providers_exists": providers_exists(),
+    }
+
+
+@app.get("/config")
+async def get_config():
+    """Return current profile and provider config (without API keys)."""
+    profile = load_profile()
+    providers = load_providers()
+    # Sanitize keys from returned providers
+    safe_providers = json.loads(json.dumps(providers))
+    for cfg in safe_providers.get("providers", {}).values():
+        cfg.pop("api_key_env", None)
+        cfg.pop("api_key", None)
+    return {"profile": profile, "providers": safe_providers}
+
+
+@app.post("/onboarding")
+async def save_onboarding(payload: OnboardingPayload):
+    """Save candidate profile, provider choice, and API key."""
+    excluded = list(payload.excluded_companies)
+    if payload.current_employer and payload.current_employer.strip():
+        current = payload.current_employer.strip()
+        if current not in excluded:
+            excluded.append(current)
+
+    # Build analogous skills map if not provided, based on variance choice
+    analogous = payload.analogous_skills or {
+        "Azure": "AWS",
+        "GCP": "AWS",
+        "Databricks": "Glue",
+        "Snowflake": "Redshift",
+        "Informatica": "ETL/ELT",
+    }
+
+    profile = {
+        "candidate": {
+            "name": payload.candidate_name,
+            "email": payload.candidate_email,
+        },
+        "target_profile": {
+            "role": payload.target_role,
+            "experience_years": payload.experience_years,
+            "experience_range": payload.experience_range,
+            "notice_period": payload.notice_period,
+            "serving_notice": payload.serving_notice,
+            "core_skills": payload.core_skills,
+        },
+        "search": {
+            "linkedin_keyword": payload.linkedin_keyword,
+            "naukri_keyword": payload.naukri_keyword,
+            "location": payload.location,
+        },
+        "filters": {
+            "match_variance": payload.match_variance,
+            "title": DEFAULT_PROFILE["filters"]["title"],
+            "company": {
+                "excluded": excluded,
+                "current_employer": payload.current_employer.strip(),
+            },
+            "applicants": {"max": 100},
+            "dealbreakers": [
+                f"DB1: Job strictly requires MORE than {payload.experience_years} years of experience.",
+                "DB2: Job requires designing/training AI/ML models or advanced Statistical/Mathematical modeling. (NOTE: Building data pipelines, cleaning data, or writing ETL workflows to support AI teams is a PERFECT match and should NOT be rejected).",
+                "DB3: Job requires a cloud platform or tool the candidate does not have and does not list as analogous.",
+                "DB4: The hiring company is the candidate's current employer.",
+                "DB5: The hiring company is in the explicit excluded-companies list.",
+            ],
+        },
+        "application": {
+            "experience_years": payload.experience_years,
+            "availability": DEFAULT_PROFILE["application"]["availability"],
+            "analogous_skills": analogous,
+        },
+        "resume": DEFAULT_PROFILE["resume"],
+    }
+
+    providers = json.loads(json.dumps(DEFAULT_PROVIDERS))
+    providers["active_provider"] = payload.provider
+    for name, cfg in providers["providers"].items():
+        cfg["enabled"] = (name == payload.provider)
+
+    save_profile(profile)
+    save_providers(providers)
+
+    # Persist API key to .env using the correct env var name for the provider
+    env_key = providers["providers"][payload.provider].get("api_key_env", f"{payload.provider.upper()}_API_KEY")
+    _write_env_key(env_key, payload.api_key)
+
+    return {"status": "saved", "provider": payload.provider, "env_key": env_key}
+
+
+def _write_env_key(key_name: str, key_value: str) -> None:
+    """Write or update a single key in the project .env file."""
+    env_path = os.path.join(BASE_DIR, ".env")
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    updated = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key_name}="):
+            lines[i] = f"{key_name}={key_value}\n"
+            updated = True
+            break
+
+    if not updated:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
+        lines.append(f"{key_name}={key_value}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+@app.post("/upload-resume")
+async def upload_resume_file(payload: dict):
+    """Accept a resume.docx upload as base64 from the onboarding UI."""
+    import base64
+    b64_data = payload.get("data", "")
+    filename = payload.get("filename", "resume.docx")
+    if not b64_data:
+        raise HTTPException(status_code=400, detail="No file data provided.")
+
+    resume_path, _ = get_resume_paths()
+    with open(resume_path, "wb") as f:
+        f.write(base64.b64decode(b64_data))
+    return {"status": "saved", "path": str(resume_path), "filename": filename}
+
+
+@app.post("/derive-resume")
+async def derive_resume():
+    """Derive base_resume.md from the uploaded resume.docx."""
+    result = derive_base_resume(force=True)
+    if result is None:
+        raise HTTPException(status_code=400, detail="resume.docx not found; upload first.")
+    return {"status": "derived", "path": str(result)}

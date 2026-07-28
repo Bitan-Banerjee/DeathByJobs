@@ -3,6 +3,7 @@ import json
 import random
 import time
 import argparse
+import sys
 from dotenv import load_dotenv
 import re
 import urllib.parse
@@ -10,8 +11,12 @@ from playwright.sync_api import sync_playwright
 from datetime import datetime
 
 # Path setup
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
 load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+from utils.config_loader import load_profile, get_excluded_companies
 
 EMAIL = os.getenv("LINKEDIN_EMAIL")
 PASSWORD = os.getenv("LINKEDIN_PASSWORD")
@@ -19,31 +24,27 @@ SESSION_FILE = os.path.join(BASE_DIR, 'data', 'linkedin_session.json')
 JOBS_FILE = os.path.join(BASE_DIR, 'data', 'jobs.json')
 SEEN_JOBS_FILE = os.path.join(BASE_DIR, 'data', 'seen_jobs.json')
 
-def is_title_relevant(title):
+_profile = load_profile()
+_filters = _profile.get("filters", {})
+_title_cfg = _filters.get("title", {})
+_applicants_cfg = _filters.get("applicants", {})
+
+def is_title_relevant(title, profile=None):
+    if profile is None:
+        profile = _profile
+    filters = profile.get("filters", {})
+    title_cfg = filters.get("title", {})
     title_lower = title.lower()
-    
-    # Negative Keywords (Seniority & Unrelated Domains)
-    red_flags = [
-        r'\bdirector\b', r'\bmanager\b', r'\bvp\b', r'\blead\b', r'\bhead\b', r'\bprincipal\b',
-        r'\bfrontend\b', r'\bfront-end\b', r'\bui\b', r'\bux\b', r'\bios\b', r'\bandroid\b',
-        r'\bmobile\b', r'\breact\b', r'\bangular\b', r'\bfull stack\b', r'\bfull-stack\b',
-        r'\bqa\b', r'\btest\b', r'\bsupport\b'
-    ]
-    
-    for pattern in red_flags:
-        if re.search(pattern, title_lower):
+
+    red_flags = title_cfg.get("red_flags", _title_cfg.get("red_flags", []))
+    for flag in red_flags:
+        if flag.lower() in title_lower.split() or re.search(r'\b' + re.escape(flag.lower()) + r'\b', title_lower):
             return False
-            
-    # Positive Keywords (Broad safety net to ensure we don't miss good jobs)
-    green_flags = [
-        'data', 'etl', 'elt', 'aws', 'cloud', 'backend', 'back-end',
-        'pipeline', 'spark', 'pyspark', 'analytics', 'infrastructure', 'platform', 
-        'python', 'sql', 'database', 'glue', 'lambda', 'redshift', 'rds',
-        'warehouse', 'airflow', 'big data', 'bigdata'
-    ]
-    if any(flag in title_lower for flag in green_flags):
+
+    green_flags = title_cfg.get("green_flags", _title_cfg.get("green_flags", []))
+    if any(flag.lower() in title_lower for flag in green_flags):
         return True
-        
+
     return False
 
 def human_delay(min_sec=1.5, max_sec=4.5):
@@ -133,31 +134,38 @@ def scrape_linkedin_jobs(keyword, location, max_pages, max_jobs, output_file=JOB
             slow_scroll(page)
             
             # --- BROWSER LEVEL FILTERING ---
+            excluded_companies = get_excluded_companies(_profile)
+            browser_filters = ["Senior", "Lead", "Manager", "Director", "VP", "Principal"]
+            filters_json = json.dumps(browser_filters)
+            excluded_json = json.dumps(excluded_companies)
             print("🪄 Applying browser-level filters (DOM removal)...")
-            page.evaluate("""() => {
-                const filters = ["Senior", "Lead", "Manager", "Director", "VP", "Principal"];
-                const excludedCompanies = ["Turing"];
+            script = """
+            () => {
+                const filters = %s;
+                const excludedCompanies = %s;
                 const selectors = [".job-card-container", ".jobs-search-results-list__item", ".base-card", ".base-search-card", ".jobs-search-results__list-item"];
-                
+
                 selectors.forEach(sel => {
                     document.querySelectorAll(sel).forEach(card => {
                         const text = card.innerText;
                         const hasFlag = filters.some(f => {
-                            const regex = new RegExp('\\\\b' + f + '\\\\b', 'i');
+                            const regex = new RegExp('\\b' + f + '\\b', 'i');
                             return regex.test(text);
                         });
-                        
+
                         const isExcludedCompany = excludedCompanies.some(c => {
-                            const regex = new RegExp('\\\\b' + c + '\\\\b', 'i');
+                            const regex = new RegExp('\\b' + c + '\\b', 'i');
                             return regex.test(text);
                         });
-                        
+
                         if (hasFlag || isExcludedCompany || text.includes('Applied') || text.includes('Applied ')) {
                             card.remove();
                         }
                     });
                 });
-            }""")
+            }
+            """ % (filters_json, excluded_json)
+            page.evaluate(script)
             # -------------------------------
 
             cards = page.locator(".job-card-container")
@@ -184,7 +192,8 @@ def scrape_linkedin_jobs(keyword, location, max_pages, max_jobs, output_file=JOB
                     subtitle = card.locator(".artdeco-entity-lockup__subtitle").first
                     company = subtitle.inner_text().split('\n')[0].strip() if subtitle.is_visible() else "Unknown"
                     
-                    if company.lower() == "turing":
+                    excluded_companies = get_excluded_companies(_profile)
+                    if any(excluded.lower() == company.lower() for excluded in excluded_companies):
                         print(f"  ⏭️ Skipped (Excluded Company): {company}")
                         continue
                     
@@ -213,17 +222,18 @@ def scrape_linkedin_jobs(keyword, location, max_pages, max_jobs, output_file=JOB
                             applicants = app_locator.inner_text().strip()
                     except: pass
                     
-                    # Drop job if > 100 applicants
+                    # Drop job if > configured max applicants
+                    max_applicants = _applicants_cfg.get("max", 100)
                     skip_job = False
                     if applicants != "Unknown":
                         if "over 100" in applicants.lower():
                             skip_job = True
                         else:
                             num_match = re.search(r'\d+', applicants.replace(',', ''))
-                            if num_match and int(num_match.group()) > 100:
+                            if num_match and int(num_match.group()) > max_applicants:
                                 skip_job = True
                     if skip_job:
-                        print(f"  ⏭️ Skipped: Too many applicants ({applicants})")
+                        print(f"  ⏭️ Skipped: Too many applicants ({applicants}, max {max_applicants})")
                         continue
 
                     all_jobs.append({
@@ -253,6 +263,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape LinkedIn job postings.")
     parser.add_argument("--pages", type=int, default=1, help="Number of search result pages to scrape.")
     parser.add_argument("--max", type=int, default=10, help="Maximum number of jobs to scrape in total.")
+    parser.add_argument("--keyword", type=str, default=None, help="Override search keyword.")
+    parser.add_argument("--location", type=str, default=None, help="Override search location.")
     args = parser.parse_args()
-    
-    scrape_linkedin_jobs(keyword="Data Engineer", location="India", max_pages=args.pages, max_jobs=args.max)
+
+    keyword, naukri_keyword, location = load_profile().get("search", {}).values()
+    keyword = args.keyword or keyword
+    location = args.location or location
+
+    scrape_linkedin_jobs(keyword=keyword, location=location, max_pages=args.pages, max_jobs=args.max)

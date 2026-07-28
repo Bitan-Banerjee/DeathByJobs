@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Foundation
 import Combine
+import UniformTypeIdentifiers
 
 // MARK: - Design System & Theme
 
@@ -165,6 +166,32 @@ struct PlatformReport: Codable {
     let matched: Int
     let applied: Int
     let failed: Int
+}
+
+struct OnboardingStatusResponse: Codable {
+    let configured: Bool
+    let profile_exists: Bool
+    let providers_exists: Bool
+}
+
+struct OnboardingPayload: Codable {
+    let candidate_name: String
+    let candidate_email: String
+    let target_role: String
+    let experience_years: Int
+    let experience_range: String
+    let notice_period: String
+    let serving_notice: Bool
+    let core_skills: [String]
+    let linkedin_keyword: String
+    let naukri_keyword: String
+    let location: String
+    let match_variance: String
+    let excluded_companies: [String]
+    let current_employer: String
+    let provider: String
+    let api_key: String
+    let analogous_skills: [String: String]?
 }
 
 // MARK: - Backend Process Manager
@@ -337,6 +364,8 @@ class PipelineViewModel: ObservableObject {
     @Published var maxLoops: Int = 4
     @Published var mode: String = "quota"
     @Published var errorMessage: String? = nil
+    @Published var onboardingConfigured: Bool = true
+    @Published var onboardingCheckComplete: Bool = false
 
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
@@ -348,7 +377,21 @@ class PipelineViewModel: ObservableObject {
         await BackendManager.shared.startServerIfNeeded()
         backendStartedByApp = !BackendManager.shared.isAlreadyRunning
         backendStarting = false
+        await checkOnboardingStatus()
         startPolling()
+    }
+
+    @MainActor
+    func checkOnboardingStatus() async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/onboarding/status")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(OnboardingStatusResponse.self, from: data)
+            onboardingConfigured = decoded.configured
+        } catch {
+            onboardingConfigured = true
+        }
+        onboardingCheckComplete = true
     }
 
     func startPolling() {
@@ -496,6 +539,91 @@ class PipelineViewModel: ObservableObject {
                     self?.errorMessage = "Schedule update failed: \(error.localizedDescription)"
                 }
                 Task { await self?.refreshCron() }
+            }
+        }.resume()
+    }
+
+    func submitOnboarding(_ payload: OnboardingPayload, completion: @escaping (Bool, String?) -> Void) {
+        guard let url = URL(string: "\(baseUrl)/onboarding") else {
+            completion(false, "Invalid URL")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(payload)
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error.localizedDescription)
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    let msg = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Save failed"
+                    completion(false, msg)
+                    return
+                }
+                self?.onboardingConfigured = true
+                completion(true, nil)
+            }
+        }.resume()
+    }
+
+    func uploadResume(url: URL, completion: @escaping (Bool, String?) -> Void) {
+        guard let endpoint = URL(string: "\(baseUrl)/upload-resume") else {
+            completion(false, "Invalid URL")
+            return
+        }
+        guard let fileData = try? Data(contentsOf: url) else {
+            completion(false, "Could not read resume file")
+            return
+        }
+
+        let payload: [String: String] = [
+            "filename": url.lastPathComponent,
+            "data": fileData.base64EncodedString()
+        ]
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error.localizedDescription)
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    completion(false, "Upload failed")
+                    return
+                }
+                completion(true, nil)
+            }
+        }.resume()
+    }
+
+    func deriveResume(completion: @escaping (Bool, String?) -> Void) {
+        guard let url = URL(string: "\(baseUrl)/derive-resume") else {
+            completion(false, "Invalid URL")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error.localizedDescription)
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    let msg = data.flatMap { String(data: $0, encoding: .utf8) } ?? "Derivation failed"
+                    completion(false, msg)
+                    return
+                }
+                completion(true, nil)
             }
         }.resume()
     }
@@ -859,6 +987,7 @@ struct SidebarView: View {
                 SidebarButton(title: "Dashboard", icon: "square.grid.2x2.fill", page: "dashboard", current: $viewModel.page, theme: theme)
                 SidebarButton(title: "Schedule", icon: "calendar", page: "schedule", current: $viewModel.page, theme: theme)
                 SidebarButton(title: "Logs", icon: "doc.text", page: "logs", current: $viewModel.page, theme: theme)
+                SidebarButton(title: "Settings", icon: "gearshape", page: "settings", current: $viewModel.page, theme: theme)
             }
             .padding(.horizontal, 12)
 
@@ -1260,10 +1389,327 @@ struct LogsView: View {
     }
 }
 
+// MARK: - Onboarding
+
+struct OnboardingView: View {
+    @ObservedObject var viewModel: PipelineViewModel
+    let theme: AppTheme
+
+    @State private var candidateName: String = ""
+    @State private var candidateEmail: String = ""
+    @State private var targetRole: String = "Data Engineer"
+    @State private var experienceYears: String = "4"
+    @State private var experienceRange: String = "0 to 5 years"
+    @State private var noticePeriod: String = "30 days"
+    @State private var servingNotice: Bool = false
+    @State private var coreSkills: String = "Python, SQL, PySpark, AWS"
+    @State private var linkedinKeyword: String = "Data Engineer"
+    @State private var naukriKeyword: String = "Data Engineer"
+    @State private var location: String = "India"
+    @State private var matchVariance: String = "moderate"
+    @State private var excludedCompanies: String = "Turing"
+    @State private var currentEmployer: String = ""
+    @State private var provider: String = "gemini"
+    @State private var apiKey: String = ""
+    @State private var resumeURL: URL? = nil
+    @State private var isSaving: Bool = false
+    @State private var errorText: String? = nil
+    @State private var derivedResume: Bool = false
+
+    private let providers = [
+        ("gemini", "Google Gemini"),
+        ("openai", "OpenAI"),
+        ("anthropic", "Anthropic Claude"),
+        ("local", "Local / Ollama")
+    ]
+
+    private let varianceLevels = [
+        ("strict", "Strict — exact tools only"),
+        ("moderate", "Moderate — allow similar tools"),
+        ("loose", "Loose — broad domain match")
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Welcome").font(theme.headingFont).foregroundColor(theme.text)
+                    Text("Set up your profile so the pipeline can find jobs that fit you.").font(theme.monoFont).foregroundColor(theme.muted)
+                }
+                .padding(.bottom, 32)
+
+                if let error = errorText {
+                    ThemedCard(theme: theme, borderColor: theme.errorRed) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.octagon.fill").foregroundColor(theme.errorRed)
+                            Text(error).font(theme.monoFont).foregroundColor(theme.errorRed)
+                            Spacer()
+                        }
+                    }
+                    .padding(.bottom, 20)
+                }
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Candidate")
+                        HStack(spacing: 14) {
+                            labeledTextField("Full Name", text: $candidateName)
+                            labeledTextField("Email", text: $candidateEmail)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Experience Years", text: $experienceYears, width: 120)
+                            labeledTextField("Open to Roles", text: $experienceRange, placeholder: "e.g. 0 to 5 years")
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("Notice Period", text: $noticePeriod, width: 140)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("SERVING NOTICE").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                                ThemedToggle(isOn: $servingNotice, theme: theme)
+                            }
+                        }
+                        labeledTextField("Core Skills (comma separated)", text: $coreSkills)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Target Job")
+                        HStack(spacing: 14) {
+                            labeledTextField("Target Role", text: $targetRole)
+                            labeledTextField("Location", text: $location, width: 150)
+                        }
+                        HStack(spacing: 14) {
+                            labeledTextField("LinkedIn Keyword", text: $linkedinKeyword)
+                            labeledTextField("Naukri Keyword", text: $naukriKeyword)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("MATCH VARIANCE").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            HStack(spacing: 0) {
+                                ForEach(varianceLevels, id: \.0) { level in
+                                    ModeButton(title: level.1, value: level.0, selection: $matchVariance, theme: theme)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Company Filters")
+                        labeledTextField("Current Employer", text: $currentEmployer)
+                        labeledTextField("Excluded Companies (comma separated)", text: $excludedCompanies)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("AI Provider")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("PROVIDER").font(theme.monoSmallFont).foregroundColor(theme.muted)
+                            HStack(spacing: 0) {
+                                ForEach(providers, id: \.0) { p in
+                                    ModeButton(title: p.1, value: p.0, selection: $provider, theme: theme)
+                                }
+                            }
+                        }
+                        SecureField("API Key", text: $apiKey)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(theme.text)
+                            .padding(8)
+                            .background(theme.surface2)
+                            .border(theme.border, width: 1)
+                            .textFieldStyle(.plain)
+                    }
+                }
+                .padding(.bottom, 20)
+
+                ThemedCard(theme: theme) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Resume")
+                        HStack(spacing: 12) {
+                            Button("Choose resume.docx") {
+                                let panel = NSOpenPanel()
+                                if #available(macOS 11.0, *) {
+                                    if let docxType = UTType(filenameExtension: "docx") {
+                                        panel.allowedContentTypes = [docxType]
+                                    }
+                                } else {
+                                    panel.allowedFileTypes = ["docx"]
+                                }
+                                panel.allowsMultipleSelection = false
+                                if panel.runModal() == .OK {
+                                    resumeURL = panel.url
+                                }
+                            }
+                            .buttonStyle(ThemedButtonStyle(variant: .ghost, theme: theme, isDisabled: false))
+                            .focusable(false)
+
+                            if let url = resumeURL {
+                                Text(url.lastPathComponent)
+                                    .font(theme.monoFont)
+                                    .foregroundColor(theme.muted)
+                                    .lineLimit(1)
+                            } else {
+                                Text("No file selected")
+                                    .font(theme.monoFont)
+                                    .foregroundColor(theme.muted)
+                            }
+
+                            Spacer()
+                        }
+
+                        if derivedResume {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(theme.accent)
+                                Text("base_resume.md derived from resume.docx")
+                                    .font(theme.monoFont)
+                                    .foregroundColor(theme.accent)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 24)
+
+                HStack {
+                    Spacer()
+                    Button(action: saveOnboarding) {
+                        HStack(spacing: 8) {
+                            if isSaving { ProgressView().scaleEffect(0.7).tint(theme.bg) }
+                            Text(isSaving ? "Saving…" : "Save & Continue")
+                        }
+                    }
+                    .buttonStyle(ThemedButtonStyle(variant: .accent, theme: theme, isDisabled: isSaving || !isValid))
+                    .disabled(isSaving || !isValid)
+                    .focusable(false)
+                }
+            }
+            .padding(40)
+            .frame(maxWidth: 700, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.bg)
+    }
+
+    private var isValid: Bool {
+        !candidateName.isEmpty && !targetRole.isEmpty && !apiKey.isEmpty && resumeURL != nil && !experienceYears.isEmpty
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .tracking(1.2)
+            .foregroundColor(theme.muted)
+    }
+
+    private func labeledTextField(_ label: String, text: Binding<String>, placeholder: String = "", width: CGFloat? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+            TextField(placeholder, text: text)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundColor(theme.text)
+                .frame(width: width)
+                .padding(8)
+                .background(theme.surface2)
+                .border(theme.border, width: 1)
+                .textFieldStyle(.plain)
+        }
+    }
+
+    private func saveOnboarding() {
+        guard let resumeURL = resumeURL else { return }
+        isSaving = true
+        errorText = nil
+
+        viewModel.uploadResume(url: resumeURL) { uploaded, uploadError in
+            guard uploaded else {
+                self.isSaving = false
+                self.errorText = uploadError ?? "Resume upload failed"
+                return
+            }
+
+            self.viewModel.deriveResume { derived, deriveError in
+                guard derived else {
+                    self.isSaving = false
+                    self.errorText = deriveError ?? "Could not derive base_resume.md"
+                    return
+                }
+                self.derivedResume = true
+
+                let payload = OnboardingPayload(
+                    candidate_name: self.candidateName,
+                    candidate_email: self.candidateEmail,
+                    target_role: self.targetRole,
+                    experience_years: Int(self.experienceYears) ?? 4,
+                    experience_range: self.experienceRange,
+                    notice_period: self.noticePeriod,
+                    serving_notice: self.servingNotice,
+                    core_skills: self.coreSkills.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+                    linkedin_keyword: self.linkedinKeyword,
+                    naukri_keyword: self.naukriKeyword,
+                    location: self.location,
+                    match_variance: self.matchVariance,
+                    excluded_companies: self.excludedCompanies.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+                    current_employer: self.currentEmployer,
+                    provider: self.provider,
+                    api_key: self.apiKey,
+                    analogous_skills: nil
+                )
+
+                self.viewModel.submitOnboarding(payload) { success, saveError in
+                    self.isSaving = false
+                    if !success {
+                        self.errorText = saveError ?? "Failed to save profile"
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Settings
+
+struct SettingsView: View {
+    @ObservedObject var viewModel: PipelineViewModel
+    let theme: AppTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Settings").font(theme.headingFont).foregroundColor(theme.text)
+                Text("Edit profile, provider, and resume in config/profile.json and config/providers.json.").font(theme.monoFont).foregroundColor(theme.muted)
+            }
+            .padding(.bottom, 36)
+
+            ThemedCard(theme: theme) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("CONFIG FILES".uppercased()).font(theme.monoSmallFont).foregroundColor(theme.muted)
+                    Text("~/Coding/GitHub_Repos/AiAutomation/config/profile.json")
+                        .font(theme.monoFont)
+                        .foregroundColor(theme.accent)
+                    Text("~/Coding/GitHub_Repos/AiAutomation/config/providers.json")
+                        .font(theme.monoFont)
+                        .foregroundColor(theme.accent)
+                    Text("Restart the app after editing config files.")
+                        .font(theme.monoFont)
+                        .foregroundColor(theme.muted)
+                }
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(theme.bg)
+    }
+}
+
 // MARK: - Main App Structure
 
 struct ContentView: View {
     @StateObject var viewModel = PipelineViewModel()
+    @State private var showOnboardingSheet = false
     let theme = AppTheme.default()
 
     var body: some View {
@@ -1279,6 +1725,8 @@ struct ContentView: View {
                         ScheduleView(viewModel: viewModel, theme: theme)
                     case "logs":
                         LogsView(viewModel: viewModel, theme: theme)
+                    case "settings":
+                        SettingsView(viewModel: viewModel, theme: theme)
                     default:
                         DashboardView(viewModel: viewModel, theme: theme)
                     }
@@ -1290,14 +1738,14 @@ struct ContentView: View {
             .background(theme.bg)
             .overlay(
                 Group {
-                    if viewModel.backendStarting {
+                    if viewModel.backendStarting || !viewModel.onboardingCheckComplete {
                         ZStack {
                             theme.bg.opacity(0.92)
                             VStack(spacing: 16) {
                                 ProgressView()
                                     .scaleEffect(1.2)
                                     .tint(theme.accent)
-                                Text("Starting pipeline engine…")
+                                Text(viewModel.backendStarting ? "Starting pipeline engine…" : "Checking setup…")
                                     .font(theme.monoFont)
                                     .foregroundColor(theme.text)
                             }
@@ -1307,8 +1755,21 @@ struct ContentView: View {
             )
         }
         .frame(minWidth: 900, minHeight: 650)
+        .sheet(isPresented: $showOnboardingSheet) {
+            OnboardingView(viewModel: viewModel, theme: theme)
+        }
         .task {
             await viewModel.prepareBackend()
+            presentOnboardingIfNeeded()
+        }
+        .onChange(of: viewModel.onboardingConfigured) { _, _ in
+            presentOnboardingIfNeeded()
+        }
+    }
+
+    private func presentOnboardingIfNeeded() {
+        if viewModel.onboardingCheckComplete && !viewModel.onboardingConfigured {
+            showOnboardingSheet = true
         }
     }
 }

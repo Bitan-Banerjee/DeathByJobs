@@ -1,8 +1,10 @@
 # AI Job Application Pipeline
 
-An end-to-end, fully autonomous AI agent that scrapes, filters, tailors, and applies to jobs on LinkedIn. 
+An end-to-end, fully autonomous AI agent that scrapes, filters, tailors, and applies to jobs on LinkedIn and Naukri.
 
-Built with **Python**, **Playwright**, and **Google Gemini**, this pipeline doesn't just "spray and pray." It acts as a highly discerning personal recruiter: it evaluates jobs against your strict dealbreakers, scores them, rewrites your resume for each specific role, and handles dynamic application forms—all while respecting API rate limits and running completely hands-free.
+Built with **Python**, **Playwright**, and a provider-agnostic LLM layer, this pipeline doesn't just "spray and pray." It acts as a highly discerning personal recruiter: it evaluates jobs against your strict dealbreakers, scores them, rewrites your resume for each specific role, and handles dynamic application forms—all while respecting API rate limits and running completely hands-free.
+
+The tool is **profile-first**: any candidate can configure their target role, skills, dealbreakers, preferred LLM provider, and resume, and the pipeline adapts automatically.
 
 ---
 
@@ -11,15 +13,18 @@ Built with **Python**, **Playwright**, and **Google Gemini**, this pipeline does
 - **Goal-Oriented Looping Agent:** Tell it to get 50 applications today, and it will continuously scrape, filter, and apply until it hits the target.
 - **Zero-Token Sourcing Gatekeepers:** Smart Python regex filters instantly drop junk roles (e.g., Senior, QA, Frontend) and saturated jobs (>100 applicants) *before* wasting AI tokens.
 - **A-F AI Scoring System:** Evaluates job descriptions against your `profile.json` dealbreakers and assigns a 0-100 match score.
-- **Playwright PDF Engine:** Bypasses clunky `.docx` manipulation. Uses Gemini to rewrite your `base_resume.md` summary and bullets, injects them into an HTML/CSS template, and prints a pixel-perfect, ATS-optimized PDF for *every single job*.
-- **Dynamic Form Solver:** Uses Gemini to read unseen LinkedIn "Easy Apply" questions, answers them on the fly, and saves the answers to a local memory bank (`job_qa_registry.json`) for future use.
+- **Profile-First Configuration:** All role, skill, company, and matching rules live in `config/profile.json`. Switching from Data Engineer to Frontend, ML, or any other role only requires changing config.
+- **Provider-Agnostic LLM Layer:** Use Google Gemini (default and free-tier friendly), OpenAI, Anthropic Claude, or a local Ollama server. The app asks for your preferred provider and API key during onboarding.
+- **Playwright PDF Engine:** Bypasses clunky `.docx` manipulation. Uses your chosen LLM to rewrite your `base_resume.md` summary and bullets, injects them into an HTML/CSS template, and prints a pixel-perfect, ATS-optimized PDF for *every single job*.
+- **Dynamic Form Solver:** Uses the LLM to read unseen LinkedIn "Easy Apply" questions, answers them on the fly, and saves the answers to a local memory bank (`job_qa_registry.json`) for future use.
 - **Smart Checkpointing:** Network dropped? Run with `--resume` and it automatically detects where it left off based on local files.
+- **macOS SwiftUI App:** A vintage-styled native app auto-starts the backend, shows live logs, schedules cron jobs, and walks new users through onboarding.
 
 ---
 
 ## Prerequisites & Installation
 
-You will need Python 3.10+ and a Google AI Studio API Key (Free Tier is fully supported due to built-in fallback routing).
+You will need Python 3.10+ and an API key from at least one supported LLM provider.
 
 ### 1. Clone the Repository
 ```bash
@@ -28,14 +33,8 @@ cd AiAutomation
 ```
 
 ### 2. Install Dependencies
-The project relies on Playwright for browser automation and the official Google GenAI SDK.
 ```bash
-pip3 install playwright google-genai python-dotenv
-```
-
-### 3. Install Headless Browsers
-Playwright requires browser binaries to navigate LinkedIn:
-```bash
+pip3 install -r requirements.txt
 playwright install chromium
 ```
 
@@ -43,35 +42,24 @@ playwright install chromium
 
 ## Configuration
 
-Before running the bot, you must set up your credentials and personal data.
+### macOS App (Recommended)
+Open `AiAutomation.app`. It will auto-start the backend and, if no profile exists, open an onboarding form asking for:
+- Your target role, experience, location, and skills
+- Excluded / current companies
+- Skill-match variance (strict / moderate / loose)
+- Preferred LLM provider and API key
+- Your `resume.docx` file
 
-### 1. Environment Variables
-Create a `.env` file in the root directory:
-```env
-LINKEDIN_EMAIL="your.email@example.com"
-LINKEDIN_PASSWORD="your_password"
-GEMINI_API_KEY="your_google_gemini_api_key"
-# Optional: Add backup keys to automatically bypass daily free-tier rate limits
-GEMINI_API_KEY_2="your_second_gemini_key"
-```
+The app will upload the resume, derive `base_resume.md` automatically, and write all config files.
 
-### 2. Configure Your Profile
-Edit `config/profile.json`. This tells the AI exactly what you are looking for and what your hard dealbreakers are.
-```json
-{
-  "target_role": "Data Engineer",
-  "candidate_experience": "3.8 years (Open to 0-5 years)",
-  "core_skills": ["Python", "SQL", "PySpark", "AWS"],
-  "dealbreakers": [
-    "DB1: Job strictly requires MORE than 5 years of experience.",
-    "DB2: Job requires training or building AI/ML models.",
-    "DB3: Job requires Azure or GCP, but does NOT mention AWS."
-  ]
-}
-```
+### Manual Setup
+If you prefer not to use the app:
 
-### 3. Set Your Master Resume
-Edit `base_resume.md` in the root directory. Put your actual, highly-detailed career history here using standard Markdown. The AI will use this as the "Source of Truth" when tailoring PDFs.
+1. Copy `config/profile.example.json` to `config/profile.json` and edit it.
+2. Copy `config/providers.example.json` to `config/providers.json` and edit it.
+3. Copy `.env.example` to `.env` and add your API key and LinkedIn credentials.
+4. Place your `resume.docx` in the project root.
+5. Run `python3 -c "from src.utils.resume_parser import derive_base_resume; derive_base_resume()"` to create `base_resume.md`.
 
 *(Note: Do not delete `templates/cv-template.html`, as it provides the CSS styling for your PDFs!)*
 
@@ -84,20 +72,23 @@ The entire pipeline is orchestrated by `main.py`.
 ### Standard Run (Goal-Oriented)
 To start the agent and have it loop until it successfully applies to 50 jobs today:
 ```bash
-python3 scripts/main.py --target 50
+python3 src/automation/main.py --target 50
 ```
 
 ### Quick Test Run
 To run a single, small batch without looping:
 ```bash
-python3 scripts/main.py --jobs 25 --max-loops 1
+python3 src/automation/main.py --jobs 25 --max-loops 1
 ```
 
 ### Resume from Interruption
 If the script crashes or your internet drops, don't start over! Use the resume flag to automatically detect local files and pick up exactly where it left off:
 ```bash
-python3 scripts/main.py --resume
+python3 src/automation/main.py --resume
 ```
+
+### Run via the macOS App
+Double-click `AiAutomation.app`. The app auto-starts the FastAPI backend on `127.0.0.1:8000` and opens the dashboard.
 
 ### Automating with Cron (macOS/Linux)
 To run the bot completely hands-free every morning at 9:00 AM, add this to your `crontab -e`:

@@ -3,16 +3,20 @@ import json
 import re
 import argparse
 import sys
+
+# Add path for internal imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, SCRIPT_DIR)
+sys.path.insert(0, SRC_DIR)
+
 from linkedin_auto_apply import linkedin_apply as auto_apply
 from naukri_auto_apply import naukri_apply
 from utils.export_tracker import export_to_excel
 from utils.ai_debug_service import analyze_job_failure
 from utils.ai_patcher import run_debug_script
 
-# Add path for internal imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
 FAILED_PATH = os.path.join(BASE_DIR, 'data', 'failed_applications.json')
 MAX_RETRIES = 999 
 

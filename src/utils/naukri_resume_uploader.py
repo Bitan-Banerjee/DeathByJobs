@@ -1,12 +1,20 @@
 import os
 import json
 import time
+import sys
 from playwright.sync_api import sync_playwright
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, SRC_DIR)
+sys.path.insert(0, BASE_DIR)
+
+from utils.config_loader import get_resume_paths
+
 SESSION_FILE = os.path.join(BASE_DIR, 'data', 'naukri_session.json')
-RESUME_PATH = os.path.join(BASE_DIR, 'resume.docx')
 PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
+
+RESUME_PATH = get_resume_paths()[0]
 
 def upload_resume():
     if not os.path.exists(RESUME_PATH):

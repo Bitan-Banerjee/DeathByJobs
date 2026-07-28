@@ -3,96 +3,95 @@ import json
 import time
 import random
 import re
+import sys
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from dotenv import load_dotenv
-from google import genai
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(SRC_DIR)
+sys.path.insert(0, SRC_DIR)
 
-api_keys = []
-for key_name in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"]:
-    if os.getenv(key_name):
-        api_keys.append(os.getenv(key_name).strip())
+from utils.config_loader import load_profile
+from utils.llm_client import generate_json, LLMError
+
+# Legacy alias used by debug scripts and naukri_auto_apply
+def get_batch_answers_from_gemini(questions_list, registry):
+    return get_batch_answers(questions_list, registry)
 
 SESSION_FILE = os.path.join(BASE_DIR, 'data', 'linkedin_session.json')
 MATCHED_PATH = os.path.join(BASE_DIR, 'data', 'matched_jobs.json')
 REGISTRY_PATH = os.path.join(BASE_DIR, 'data', 'job_qa_registry.json')
 
-def get_batch_answers_from_gemini(questions_list, registry):
-    if not questions_list: return {}
-    
-    print(f"    🧠 Batching {len(questions_list)} new questions to Gemini...")
-    
-    # Add profile context if available
-    profile = {}
-    profile_path = os.path.join(BASE_DIR, 'config', 'profile.json')
-    if os.path.exists(profile_path):
-        with open(profile_path, 'r') as f: profile = json.load(f)
+_profile = load_profile()
+_application_cfg = _profile.get("application", {})
+_analogous_skills = _application_cfg.get("analogous_skills", {})
+_availability = _application_cfg.get("availability", {})
+_experience_years = _application_cfg.get("experience_years", 4)
+_core_skills = _profile.get("target_profile", {}).get("core_skills", [])
 
-    prompt = f"""
-    You are filling out a job application. 
-    User Profile: {json.dumps(profile)}
-    Registry: {json.dumps(registry)}
-    
-    Answer the following list of questions:
-    {json.dumps(questions_list)}
-    
-    RULES:
-    1. You MUST return ONLY a valid JSON dictionary. 
-    2. Keys MUST be the EXACT question strings provided.
-    
-    **YEARS OF EXPERIENCE RULE**: 
-    - The candidate has **4 years** of experience in Data Engineering / AWS / Python / SQL.
-    - **ANALOGOUS SKILLS**: If asked for experience in Azure, GCP, Databricks, Snowflake, or Informatica, TREAT IT AS AWS/GLUE/ETL experience. 
-    - Example: "Years of experience in Azure?" -> Answer: "4".
-    - Example: "Experience with Databricks?" -> Answer: "4" (mapping from Glue/PySpark).
-    - NEVER output "0" for these technical skills.
-    
-    **INTERVIEW AVAILABILITY**:
-    - The candidate is available at:
-        1. Morning: Before 11:00 AM.
-        2. Afternoon: 2:00 PM - 4:30 PM.
-        3. Evening: After 7:00 PM.
-    - If asked for a preferred time slot or checkbox, pick the option that BEST fits one of these windows.
-    
-    **FORMATTING RULES**:
-    - If the question asks for years/months and expects a number (or is a numeric field), return ONLY the integer (e.g., "4" not "4 years").
-    - If the question is "Yes/No", return "Yes".
-    
-    **MULTIPLE CHOICE**: 
-    - If a question includes "(Options: ...)", the value MUST be the exact text of one of those options. Choose the most positive/experienced option.
-    
-    3. Be consistent with the Registry.
-    """
-    
-    fallback_models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest']
-    
-    for key_idx, api_key in enumerate(api_keys):
-        client = genai.Client(api_key=api_key)
-        for attempt in range(len(fallback_models)):
-            model_name = fallback_models[attempt]
-            try:
-                response = client.models.generate_content(model=model_name, contents=prompt)
-                if not response or not response.text: continue
-                
-                text = response.text.strip()
-                if text.startswith("`" * 3 + "json"): text = text[7:-3].strip()
-                elif text.startswith("`" * 3): text = text[3:-3].strip()
-                
-                new_answers = json.loads(text)
-                return new_answers
-            except Exception as e: 
-                error_msg = str(e)
-                if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "503" in error_msg:
-                    print(f"    ⚠️ Rate Limit/Unavailable on {model_name} (Key {key_idx + 1}). Switching...")
-                    continue
-                else:
-                    print(f"    ⚠️ API Error on {model_name} (Key {key_idx + 1}): {error_msg[:100]}")
-                    continue
-                    
-    raise Exception("Gemini API limits exhausted during Q&A across all available keys. Halting.")
+
+def _build_analogous_skills_text(skills_map: dict) -> str:
+    if not skills_map:
+        return "No analogous skill mappings configured."
+    lines = []
+    for required, candidate_equivalent in skills_map.items():
+        lines.append(f"- If asked for {required}, treat it as {candidate_equivalent} experience.")
+    return "\n".join(lines)
+
+
+def get_batch_answers(questions_list, registry):
+    if not questions_list: return {}
+
+    print(f"    🧠 Batching {len(questions_list)} new questions to LLM...")
+
+    profile = load_profile()
+    app_cfg = profile.get("application", {})
+    experience_years = app_cfg.get("experience_years", _experience_years)
+    availability = app_cfg.get("availability", _availability)
+    analogous_map = app_cfg.get("analogous_skills", _analogous_skills)
+    core_skills = profile.get("target_profile", {}).get("core_skills", _core_skills)
+
+    prompt = f"""You are filling out a job application.
+
+User Profile: {json.dumps(profile)}
+Registry (previously answered questions): {json.dumps(registry)}
+
+Answer the following list of questions:
+{json.dumps(questions_list)}
+
+RULES:
+1. You MUST return ONLY a valid JSON dictionary.
+2. Keys MUST be the EXACT question strings provided.
+
+**YEARS OF EXPERIENCE RULE**:
+- The candidate has **{experience_years} years** of experience in {', '.join(core_skills)}.
+- **ANALOGOUS SKILLS**:
+{_build_analogous_skills_text(analogous_map)}
+- Example: "Years of experience in Azure?" -> Answer: "{experience_years}".
+- NEVER output "0" for these technical skills.
+
+**INTERVIEW AVAILABILITY**:
+- The candidate is available at:
+    1. Morning: {availability.get('morning', 'Before 11:00 AM')}.
+    2. Afternoon: {availability.get('afternoon', '2:00 PM - 4:30 PM')}.
+    3. Evening: {availability.get('evening', 'After 7:00 PM')}.
+- If asked for a preferred time slot or checkbox, pick the option that BEST fits one of these windows.
+
+**FORMATTING RULES**:
+- If the question asks for years/months and expects a number (or is a numeric field), return ONLY the integer (e.g., "{experience_years}" not "{experience_years} years").
+- If the question is "Yes/No", return "Yes".
+
+**MULTIPLE CHOICE**:
+- If a question includes "(Options: ...)", the value MUST be the exact text of one of those options. Choose the most positive/experienced option.
+
+3. Be consistent with the Registry.
+"""
+
+    try:
+        return generate_json(prompt, temperature=0.2)
+    except LLMError as e:
+        print(f"    ⚠️ LLM Q&A failed: {e}")
+        raise
 
 def handle_questions(page, registry):
     questions_to_ask = []
@@ -411,8 +410,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                         job['debug_screenshot'] = png
                         job['debug_dom'] = html
                     break
-
-        browser.close()
 
         browser.close()
 
