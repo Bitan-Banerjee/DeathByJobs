@@ -20,7 +20,6 @@ struct ScrollerStyler: NSViewRepresentable {
         scrollView.scrollerStyle = .legacy
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
-        scrollView.autohidesScrollers = true
         scrollView.verticalScroller?.controlSize = .mini
 
         let hosting = NSHostingView(rootView: content)
@@ -33,6 +32,15 @@ struct ScrollerStyler: NSViewRepresentable {
             hosting.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
         ])
 
+        context.coordinator.scrollView = scrollView
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.boundsDidChange),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
         return scrollView
     }
 
@@ -40,6 +48,27 @@ struct ScrollerStyler: NSViewRepresentable {
         guard let scrollView = nsView as? NSScrollView,
               let hosting = scrollView.documentView as? NSHostingView<AnyView> else { return }
         hosting.rootView = content
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator: NSObject {
+        weak var scrollView: NSScrollView?
+        private var hideTimer: Timer?
+
+        @objc func boundsDidChange() {
+            guard let scroller = scrollView?.verticalScroller else { return }
+            scroller.alphaValue = 1.0
+            hideTimer?.invalidate()
+            hideTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak scroller] _ in
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.3
+                    scroller?.animator().alphaValue = 0.0
+                }
+            }
+        }
     }
 }
 
