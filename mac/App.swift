@@ -435,6 +435,12 @@ class PipelineViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
     private var timer: Timer? = nil
+    private lazy var pollingSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.timeoutIntervalForRequest = 5
+        return URLSession(configuration: config)
+    }()
 
     init() { }
 
@@ -477,6 +483,7 @@ class PipelineViewModel: ObservableObject {
                 await self?.refreshAll()
             }
         }
+        RunLoop.current.add(timer!, forMode: .common)
         Task { await refreshAll() }
     }
 
@@ -497,9 +504,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshStatus() async {
         do {
-            var req = URLRequest(url: URL(string: "\(baseUrl)/status")!)
-            req.cachePolicy = .reloadIgnoringLocalCacheData
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await pollingSession.data(from: URL(string: "\(baseUrl)/status")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 backendReachable = false
                 return
@@ -518,9 +523,7 @@ class PipelineViewModel: ObservableObject {
         do {
             var components = URLComponents(string: "\(baseUrl)/logs")!
             components.queryItems = [URLQueryItem(name: "lines", value: "200")]
-            var req = URLRequest(url: components.url!)
-            req.cachePolicy = .reloadIgnoringLocalCacheData
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await pollingSession.data(from: components.url!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(LogsResponse.self, from: data)
             logs = decoded.lines ?? []
@@ -532,9 +535,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshCron() async {
         do {
-            var req = URLRequest(url: URL(string: "\(baseUrl)/cron")!)
-            req.cachePolicy = .reloadIgnoringLocalCacheData
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await pollingSession.data(from: URL(string: "\(baseUrl)/cron")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(CronResponse.self, from: data)
             cronJobs = decoded.jobs
@@ -546,9 +547,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshReport() async {
         do {
-            var req = URLRequest(url: URL(string: "\(baseUrl)/report")!)
-            req.cachePolicy = .reloadIgnoringLocalCacheData
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await pollingSession.data(from: URL(string: "\(baseUrl)/report")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(ReportResponse.self, from: data)
             report = decoded
