@@ -497,8 +497,9 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshStatus() async {
         do {
-            let url = URL(string: "\(baseUrl)/status?t=\(Int(Date().timeIntervalSince1970))")!
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var req = URLRequest(url: URL(string: "\(baseUrl)/status")!)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: req)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 backendReachable = false
                 return
@@ -516,8 +517,10 @@ class PipelineViewModel: ObservableObject {
     func refreshLogs() async {
         do {
             var components = URLComponents(string: "\(baseUrl)/logs")!
-            components.queryItems = [URLQueryItem(name: "lines", value: "200"), URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
-            let (data, response) = try await URLSession.shared.data(from: components.url!)
+            components.queryItems = [URLQueryItem(name: "lines", value: "200")]
+            var req = URLRequest(url: components.url!)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: req)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(LogsResponse.self, from: data)
             logs = decoded.lines ?? []
@@ -529,8 +532,9 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshCron() async {
         do {
-            let url = URL(string: "\(baseUrl)/cron?t=\(Int(Date().timeIntervalSince1970))")!
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var req = URLRequest(url: URL(string: "\(baseUrl)/cron")!)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: req)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(CronResponse.self, from: data)
             cronJobs = decoded.jobs
@@ -542,8 +546,9 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshReport() async {
         do {
-            let url = URL(string: "\(baseUrl)/report?t=\(Int(Date().timeIntervalSince1970))")!
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var req = URLRequest(url: URL(string: "\(baseUrl)/report")!)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: req)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(ReportResponse.self, from: data)
             report = decoded
