@@ -20,7 +20,8 @@ struct ScrollerStyler: NSViewRepresentable {
         scrollView.scrollerStyle = .legacy
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
-        scrollView.autohidesScrollers = false
+        scrollView.autohidesScrollers = true
+        scrollView.verticalScroller?.controlSize = .mini
 
         let hosting = NSHostingView(rootView: content)
         hosting.translatesAutoresizingMaskIntoConstraints = false
