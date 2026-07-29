@@ -103,6 +103,54 @@ def run_main_pipeline():
     with open(log_path, "w") as log_file:
         subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
 
+
+def _job_listener(event):
+    """APScheduler event listener for debugging missed/executed jobs."""
+    if event.exception:
+        print(f"Scheduler: Job '{event.job_id}' crashed: {event.exception}")
+    else:
+        if event.code == 1:  # EVENT_JOB_EXECUTED
+            print(f"Scheduler: Job '{event.job_id}' executed successfully.")
+        elif event.code == 2:  # EVENT_JOB_ERROR
+            print(f"Scheduler: Job '{event.job_id}' errored.")
+        elif event.code == 4:  # EVENT_JOB_MISSED
+            print(f"Scheduler: Job '{event.job_id}' MISSED at {event.scheduled_run_time}.")
+        elif event.code == 8:  # EVENT_JOB_MODIFIED
+            print(f"Scheduler: Job '{event.job_id}' modified.")
+
+scheduler.add_listener(_job_listener)
+
+
+def _check_scheduled_jobs():
+    """Watchdog: fires any job whose scheduled minute has arrived.
+    This guards against APScheduler cron misses when the process is launched
+    by the native app or the machine sleeps/wakes."""
+    now = datetime.now(scheduler.timezone)
+    current_key = (now.hour, now.minute)
+
+    with open(SCHEDULE_FILE, 'r') as f:
+        config = json.load(f)
+
+    for job_info in config.get("jobs", []):
+        if not job_info.get("enabled"):
+            continue
+        if (job_info["hour"], job_info["minute"]) != current_key:
+            continue
+        job_id = job_info["id"]
+        last_key = _last_fired_minute.get(job_id)
+        if last_key == current_key:
+            continue
+        func_name = job_info["func"].rsplit(':', 1)[1]
+        func = globals().get(func_name)
+        if func:
+            print(f"Scheduler watchdog: Firing '{job_id}' at {now.strftime('%H:%M:%S')}.")
+            func()
+            _last_fired_minute[job_id] = current_key
+
+
+_last_fired_minute: dict[str, tuple[int, int]] = {}
+
+
 def run_naukri_update():
     """Runs the daily Naukri resume update."""
     print("Scheduler: Kicking off Naukri resume update.")
@@ -125,7 +173,7 @@ def load_schedule():
 
     for job_info in config.get("jobs", []):
         if job_info.get("enabled"):
-            trigger = CronTrigger(hour=job_info["hour"], minute=job_info["minute"])
+            trigger = CronTrigger(hour=job_info["hour"], minute=job_info["minute"], timezone=scheduler.timezone)
             
             # Dynamically get the function from its path string
             module_path, func_name = job_info["func"].rsplit(':', 1)
@@ -142,11 +190,13 @@ def load_schedule():
                     name=job_info["name"],
                     replace_existing=True
                 )
+                print(f"Scheduler: Loaded '{job_info['id']}' for {job_info['hour']:02d}:{job_info['minute']:02d} IST")
 
 @app.on_event("startup")
 def startup_event():
     load_schedule()
     scheduler.start()
+    scheduler.add_job(_check_scheduled_jobs, "interval", minutes=1, id="scheduler_watchdog", replace_existing=True)
     atexit.register(lambda: scheduler.shutdown())
 
 LOCK_FILE = os.path.join(BASE_DIR, "app.lock")
@@ -394,14 +444,15 @@ async def update_cron_job(update: CronUpdate):
             func = None
             
             if job_info["enabled"]:
-                trigger = CronTrigger(hour=job_info["hour"], minute=job_info["minute"])
+                trigger = CronTrigger(hour=job_info["hour"], minute=job_info["minute"], timezone=scheduler.timezone)
                 func_path = job_info["func"]
                 func_name = func_path.rsplit(':', 1)[1]
                 func = globals().get(func_name)
                 
                 if existing_job:
                     scheduler.reschedule_job(job_info["id"], trigger=trigger)
-                    print(f"Scheduler: Rescheduled '{job_info['id']}' to {job_info['hour']:02d}:{job_info['minute']:02d}")
+                    updated_job = scheduler.get_job(job_info["id"])
+                    print(f"Scheduler: Rescheduled '{job_info['id']}' to {job_info['hour']:02d}:{job_info['minute']:02d} IST (next: {updated_job.next_run_time})")
                 else:
                     if func:
                         scheduler.add_job(
@@ -411,7 +462,7 @@ async def update_cron_job(update: CronUpdate):
                             name=job_info["name"],
                             replace_existing=True
                         )
-                        print(f"Scheduler: Added '{job_info['id']}' at {job_info['hour']:02d}:{job_info['minute']:02d}")
+                        print(f"Scheduler: Added '{job_info['id']}' at {job_info['hour']:02d}:{job_info['minute']:02d} IST")
                     else:
                         print(f"Scheduler: Could not add '{job_info['id']}' — function '{func_path}' not found.")
                         raise HTTPException(status_code=500, detail=f"Function '{func_path}' not found.")
