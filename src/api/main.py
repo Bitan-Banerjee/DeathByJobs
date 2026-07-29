@@ -349,11 +349,19 @@ async def get_report():
 
 @app.get("/cron")
 async def list_cron_jobs():
-    """Returns the schedule from the JSON file, not the live scheduler state."""
+    """Returns the schedule from the JSON file merged with live scheduler next run times."""
     if not os.path.exists(SCHEDULE_FILE):
         return {"jobs": []}
     with open(SCHEDULE_FILE, 'r') as f:
         config = json.load(f)
+
+    live_jobs = {job.id: job for job in scheduler.get_jobs()}
+    for job_info in config.get("jobs", []):
+        live = live_jobs.get(job_info["id"])
+        if live and live.next_run_time:
+            job_info["next_run"] = live.next_run_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+        else:
+            job_info.pop("next_run", None)
     return config
 
 @app.patch("/cron")
@@ -380,12 +388,20 @@ async def update_cron_job(update: CronUpdate):
             
             # Now, update the live scheduler
             existing_job = scheduler.get_job(job_info["id"])
+            now = datetime.now(scheduler.timezone)
+            scheduled_today = now.replace(hour=job_info["hour"], minute=job_info["minute"], second=0, microsecond=0)
+            run_now = False
+            func = None
             
             if job_info["enabled"]:
                 trigger = CronTrigger(hour=job_info["hour"], minute=job_info["minute"])
-                func = globals().get(job_info["func"].split(':')[1])
+                func_path = job_info["func"]
+                func_name = func_path.rsplit(':', 1)[1]
+                func = globals().get(func_name)
+                
                 if existing_job:
                     scheduler.reschedule_job(job_info["id"], trigger=trigger)
+                    print(f"Scheduler: Rescheduled '{job_info['id']}' to {job_info['hour']:02d}:{job_info['minute']:02d}")
                 else:
                     if func:
                         scheduler.add_job(
@@ -395,8 +411,18 @@ async def update_cron_job(update: CronUpdate):
                             name=job_info["name"],
                             replace_existing=True
                         )
+                        print(f"Scheduler: Added '{job_info['id']}' at {job_info['hour']:02d}:{job_info['minute']:02d}")
+                    else:
+                        print(f"Scheduler: Could not add '{job_info['id']}' — function '{func_path}' not found.")
+                        raise HTTPException(status_code=500, detail=f"Function '{func_path}' not found.")
+                
+                # If the saved time has already passed today, run it once now so the user
+                # does not have to wait until tomorrow.
+                if scheduled_today <= now:
+                    run_now = True
             elif existing_job:
                 scheduler.remove_job(job_info["id"])
+                print(f"Scheduler: Disabled '{job_info['id']}'")
 
             break
     
@@ -406,6 +432,11 @@ async def update_cron_job(update: CronUpdate):
     # Write changes back to the file
     with open(SCHEDULE_FILE, 'w') as f:
         json.dump(config, f, indent=2)
+    
+    # Fire once if the scheduled time was already passed when the user saved it.
+    if run_now and func:
+        print(f"Scheduler: Saved time {job_info['hour']:02d}:{job_info['minute']:02d} already passed today; running '{job_info['id']}' now.")
+        scheduler.add_job(func, trigger='date', run_date=datetime.now(scheduler.timezone), id=f"{job_info['id']}_catchup", replace_existing=True)
         
     # Find the updated job to return
     updated_job_to_return = next((job for job in config["jobs"] if job["id"] == update.job_id), None)

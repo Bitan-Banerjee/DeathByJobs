@@ -146,6 +146,7 @@ struct CronJob: Codable, Identifiable, Equatable {
     var enabled: Bool
     var hour: Int
     var minute: Int
+    var nextRun: String?
 }
 
 struct CronResponse: Codable {
@@ -618,6 +619,19 @@ class PipelineViewModel: ObservableObject {
         }.resume()
     }
 
+    func triggerCron(jobId: String) {
+        guard let url = URL(string: "\(baseUrl)/scheduler/trigger") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.errorMessage = "Run now failed: \(error.localizedDescription)"
+                }
+            }
+        }.resume()
+    }
+
     func submitOnboarding(_ payload: OnboardingPayload, completion: @escaping (Bool, String?) -> Void) {
         guard let url = URL(string: "\(baseUrl)/onboarding") else {
             completion(false, "Invalid URL")
@@ -726,14 +740,14 @@ struct ThemedButtonStyle: ButtonStyle {
     let variant: ButtonVariant
     let theme: AppTheme
     let isDisabled: Bool
-    enum ButtonVariant { case accent, red, ghost, saveSmall }
+    enum ButtonVariant { case accent, red, ghost, saveSmall, accentSmall }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: variant == .saveSmall ? 11 : 13, weight: .semibold, design: .monospaced))
+            .font(.system(size: (variant == .saveSmall || variant == .accentSmall) ? 11 : 13, weight: .semibold, design: .monospaced))
             .foregroundColor(foreground(isPressed: configuration.isPressed))
-            .padding(.horizontal, variant == .saveSmall ? 12 : 18)
-            .padding(.vertical, variant == .saveSmall ? 4 : 9)
+            .padding(.horizontal, (variant == .saveSmall || variant == .accentSmall) ? 12 : 18)
+            .padding(.vertical, (variant == .saveSmall || variant == .accentSmall) ? 4 : 9)
             .background(backgroundColor(isPressed: configuration.isPressed))
             .border(border(isPressed: configuration.isPressed), width: 1)
             .scaleEffect(configuration.isPressed && !isDisabled ? 0.97 : 1.0)
@@ -743,7 +757,10 @@ struct ThemedButtonStyle: ButtonStyle {
         if isDisabled {
             return theme.muted
         }
-        return variant == .accent ? theme.bg : theme.text
+        switch variant {
+        case .accent, .accentSmall: return theme.bg
+        default: return theme.text
+        }
     }
 
     private func backgroundColor(isPressed: Bool) -> Color {
@@ -751,7 +768,7 @@ struct ThemedButtonStyle: ButtonStyle {
             return theme.surface2.opacity(0.7)
         }
         switch variant {
-        case .accent: return isPressed ? theme.accent.opacity(0.85) : theme.accent
+        case .accent, .accentSmall: return isPressed ? theme.accent.opacity(0.85) : theme.accent
         case .red: return isPressed ? theme.errorRed.opacity(0.15) : theme.errorRedBg
         default: return isPressed ? theme.surface2.opacity(0.85) : theme.surface2
         }
@@ -762,7 +779,7 @@ struct ThemedButtonStyle: ButtonStyle {
             return theme.border.opacity(0.5)
         }
         switch variant {
-        case .accent: return theme.accent
+        case .accent, .accentSmall: return theme.accent
         case .red: return theme.errorRed
         default: return theme.border
         }
@@ -1123,12 +1140,13 @@ struct CronRowView: View {
     let job: CronJob
     let theme: AppTheme
     let onUpdate: (Bool?, Int?, Int?) -> Void
+    let onRunNow: () -> Void
 
     @State private var hourStr: String
     @State private var minuteStr: String
 
-    init(job: CronJob, theme: AppTheme, onUpdate: @escaping (Bool?, Int?, Int?) -> Void) {
-        self.job = job; self.theme = theme; self.onUpdate = onUpdate
+    init(job: CronJob, theme: AppTheme, onUpdate: @escaping (Bool?, Int?, Int?) -> Void, onRunNow: @escaping () -> Void) {
+        self.job = job; self.theme = theme; self.onUpdate = onUpdate; self.onRunNow = onRunNow
         _hourStr = State(initialValue: String(format: "%02d", job.hour))
         _minuteStr = State(initialValue: String(format: "%02d", job.minute))
     }
@@ -1147,6 +1165,11 @@ struct CronRowView: View {
                 Text(job.enabled ? "Runs daily at \(String(format: "%02d", job.hour)):\(String(format: "%02d", job.minute))" : "Disabled")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(theme.muted)
+                if let nextRun = job.nextRun {
+                    Text("Next: \(nextRun)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(theme.accent)
+                }
             }
             Spacer()
             HStack(spacing: 6) {
@@ -1217,6 +1240,12 @@ struct CronRowView: View {
                     .buttonStyle(ThemedButtonStyle(variant: .saveSmall, theme: theme, isDisabled: false))
                     .focusable(false)
                 }
+
+                Button("Run Now") {
+                    onRunNow()
+                }
+                .buttonStyle(ThemedButtonStyle(variant: .accentSmall, theme: theme, isDisabled: false))
+                .focusable(false)
             }
         }
         .padding(.vertical, 16)
@@ -1584,9 +1613,11 @@ struct ScheduleView: View {
                             .padding(.vertical, 20)
                     } else {
                         ForEach(viewModel.cronJobs) { job in
-                            CronRowView(job: job, theme: theme) { enabled, hour, minute in
+                            CronRowView(job: job, theme: theme, onUpdate: { enabled, hour, minute in
                                 viewModel.updateCron(jobId: job.id, enabled: enabled, hour: hour, minute: minute)
-                            }
+                            }, onRunNow: {
+                                viewModel.triggerCron(jobId: job.id)
+                            })
                         }
                     }
                 }
