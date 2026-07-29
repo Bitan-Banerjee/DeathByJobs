@@ -283,6 +283,35 @@ async def status():
     return {"status": status, "pid": pid}
 
 
+@app.get("/stage")
+async def current_stage():
+    """Returns the current pipeline stage by scanning the full log file."""
+    log_path = _latest_log_path()
+    if not log_path or not os.path.exists(log_path):
+        return {"stage": -1, "label": "idle"}
+
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+
+    # LinkedIn: 5 stages (1-5), Naukri: 4 stages (0-4)
+    # Map: 0=Scrape, 1=Filter, 2=Tailor, 3=Apply, 4=Export
+    stages = [
+        (4, ["STAGE 5/5", "STAGE 4/4"]),
+        (3, ["STAGE 4/5", "STAGE 3/4"]),
+        (2, ["STAGE 3/5"]),
+        (1, ["STAGE 2/5", "STAGE 2/4"]),
+        (0, ["STAGE 1/5", "STAGE 1/4", "STAGE 0/4"]),
+    ]
+    labels = ["Scraping", "AI Filtering", "Tailoring", "Applying", "Exporting"]
+
+    for stage_idx, markers in stages:
+        for marker in markers:
+            if marker in content:
+                return {"stage": stage_idx, "label": labels[stage_idx]}
+
+    return {"stage": 0, "label": "Scraping"}
+
+
 @app.post("/start_job")
 async def start_job_simple():
     """Starts the pipeline with default parameters."""

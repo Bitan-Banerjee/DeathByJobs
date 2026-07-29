@@ -140,6 +140,11 @@ struct StatusResponse: Codable {
     let pid: Int?
 }
 
+struct StageResponse: Codable {
+    let stage: Int
+    let label: String
+}
+
 struct CronJob: Codable, Identifiable, Equatable {
     let id: String
     let name: String
@@ -439,6 +444,7 @@ class PipelineViewModel: ObservableObject {
     @Published var onboardingConfigured: Bool = true
     @Published var onboardingCheckComplete: Bool = false
     @Published var currentConfig: ConfigResponse? = nil
+    @Published var currentStage: Int = -1
 
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
@@ -490,12 +496,12 @@ class PipelineViewModel: ObservableObject {
         Timer.publish(every: 3, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                Task { [weak self] in
+                Task { @MainActor [weak self] in
                     await self?.refreshAll()
                 }
             }
             .store(in: &cancellables)
-        Task { await refreshAll() }
+        Task { @MainActor in await refreshAll() }
     }
 
     func stopPolling() {
@@ -508,7 +514,8 @@ class PipelineViewModel: ObservableObject {
         async let logsTask: () = refreshLogs()
         async let cronTask: () = refreshCron()
         async let reportTask: () = refreshReport()
-        _ = await (statusTask, logsTask, cronTask, reportTask)
+        async let stageTask: () = refreshStage()
+        _ = await (statusTask, logsTask, cronTask, reportTask, stageTask)
     }
 
     @MainActor
@@ -571,6 +578,21 @@ class PipelineViewModel: ObservableObject {
             report = decoded
         } catch {
             report = nil
+        }
+    }
+
+    @MainActor
+    func refreshStage() async {
+        do {
+            let (data, response) = try await pollingSession.data(from: URL(string: "\(baseUrl)/stage")!)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(StageResponse.self, from: data)
+            if currentStage != decoded.stage {
+                objectWillChange.send()
+                currentStage = decoded.stage
+            }
+        } catch {
+            // Stage non-critical
         }
     }
 
@@ -1523,7 +1545,7 @@ struct DashboardView: View {
     }
 
     private var pipelineStages: some View {
-        let activeStage = stageIndex(from: viewModel.status, logs: viewModel.logs)
+        let activeStage = viewModel.status == "running" ? viewModel.currentStage : -1
         return HStack(spacing: 0) {
             StageNodeView(label: "Scrape", iconName: "globe", isActive: activeStage == 0, isDone: activeStage > 0, theme: theme)
             StageLineView(isDone: activeStage > 0, theme: theme)
@@ -1536,21 +1558,6 @@ struct DashboardView: View {
             StageNodeView(label: "Export", iconName: "square.and.arrow.down", isActive: activeStage == 4, isDone: activeStage > 4, theme: theme)
         }
         .padding(.horizontal, 10)
-    }
-
-    private func stageIndex(from status: String, logs: [String]) -> Int {
-        guard status == "running" else { return -1 }
-        let keywords: [(String, Int)] = [
-            ("STAGE 4/4 ✅ Export complete", 4),
-            ("STAGE 3/4 ✅ Auto-Applying complete", 3),
-            ("STAGE 3/5 ✅ Tailoring complete", 2),
-            ("STAGE 2/5 ✅ Filtering complete", 1),
-            ("STAGE 1/5 ✅ Scraping complete", 0)
-        ]
-        for (keyword, idx) in keywords {
-            if logs.contains(where: { $0.contains(keyword) }) { return idx }
-        }
-        return 0
     }
 }
 
