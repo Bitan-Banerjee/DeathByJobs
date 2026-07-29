@@ -3,13 +3,14 @@ import sys
 import csv
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.jobstores.base import JobLookupError
 import atexit
 
 # --- PATH SETUP ---
@@ -48,7 +49,7 @@ if os.path.exists(UI_DIR):
     app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
 
 active_process = None
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -410,6 +411,20 @@ async def update_cron_job(update: CronUpdate):
     updated_job_to_return = next((job for job in config["jobs"] if job["id"] == update.job_id), None)
 
     return {"status": "updated", "job": updated_job_to_return}
+
+
+@app.get("/scheduler")
+async def scheduler_status():
+    """Return the list of scheduled jobs and their next run time."""
+    jobs = []
+    for job in scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run": str(job.next_run_time) if job.next_run_time else None,
+            "trigger": str(job.trigger),
+        })
+    return {"jobs": jobs, "timezone": str(scheduler.timezone)}
 
 
 # ── Onboarding / Config endpoints ─────────────────────────────────────────────

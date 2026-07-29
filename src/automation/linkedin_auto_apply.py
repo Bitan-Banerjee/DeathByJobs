@@ -196,34 +196,7 @@ def handle_questions(page, registry):
                             lbl.click()
                             break
 
-def take_screenshot(page, company_name, error_type, debug_mode=False):
-    """Saves a timestamped screenshot and DOM to logs/screenshots/ for debugging."""
-    try:
-        now = datetime.now()
-        ss_dir = os.path.join(BASE_DIR, 'logs', 'screenshots', now.strftime("%Y"), now.strftime("%m"), now.strftime("%d"))
-        os.makedirs(ss_dir, exist_ok=True)
-        
-        safe_company = re.sub(r'[^\w\s-]', '', company_name).strip().replace(' ', '_')
-        timestamp = now.strftime('%H-%M-%S')
-        
-        # Save Screenshot
-        png_filename = f"{timestamp}_linkedin_{safe_company}_{error_type}.png"
-        png_path = os.path.join(ss_dir, png_filename)
-        page.screenshot(path=png_path)
-        
-        # Save DOM
-        html_filename = f"{timestamp}_linkedin_{safe_company}_{error_type}.html"
-        html_path = os.path.join(ss_dir, html_filename)
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(page.content())
-            
-        print(f"    📸 Evidence saved: {png_filename} and {html_filename}")
-        return png_path, html_path
-    except Exception as e:
-        print(f"    ⚠️ Failed to take screenshot: {e}")
-        return None, None
-
-def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
+def linkedin_apply(matched_path=MATCHED_PATH):
     if not os.path.exists(REGISTRY_PATH): return
     with open(REGISTRY_PATH, 'r') as f: registry = json.load(f)
     if not os.path.exists(matched_path): return
@@ -251,7 +224,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                 page.goto(job['url'], wait_until="domcontentloaded")
             except Exception as e:
                 print(f"  ⚠️ Navigation failed: {e}")
-                if debug_mode: take_screenshot(page, company_name, "navigation_failed", debug_mode)
                 continue
             
             time.sleep(random.uniform(2, 4))
@@ -265,7 +237,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
             except: pass
 
             try:
-                # Close the messaging drawer if it's open and blocking UI
                 if page.locator(".msg-overlay-bubble-header__control--close-btn").is_visible(timeout=1000):
                     page.locator(".msg-overlay-bubble-header__control--close-btn").click()
             except: pass
@@ -306,21 +277,12 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
 
             if not button_clicked:
                 print(f"  ❌ Easy Apply button genuinely not found. Moving on.")
-                if debug_mode: 
-                    png, html = take_screenshot(page, company_name, "no_apply_button", debug_mode)
-                    job['debug_screenshot'] = png
-                    job['debug_dom'] = html
                 continue
 
-            # Wait for the modal to actually appear before starting the interaction loop
             try:
                 page.locator(".artdeco-modal").first.wait_for(state="visible", timeout=12000)
             except Exception:
                 print("  ⚠️ Modal did not appear (might be an external redirect or slow connection). Skipping.")
-                if debug_mode: 
-                    png, html = take_screenshot(page, company_name, "modal_timeout", debug_mode)
-                    job['debug_screenshot'] = png
-                    job['debug_dom'] = html
                 continue
 
             for loop_count in range(10):
@@ -330,7 +292,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                 if not modal.is_visible():
                     if loop_count > 0:
                         print("  ⚠️ Modal closed unexpectedly.")
-                        if debug_mode: take_screenshot(page, company_name, "modal_closed_early", debug_mode)
                     break
                     
                 handle_questions(page, registry)
@@ -350,7 +311,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                     error_text = errors.first.inner_text().strip()
                     print(f"  ⚠️ Form validation error detected: {error_text}")
                     
-                    # Attempt a surgical fix for the most common numeric error
                     if "numeric" in error_text.lower() or "number" in error_text.lower():
                         error_field = page.locator(".artdeco-inline-feedback--error").locator("xpath=./preceding-sibling::*[self::input or self::textarea]").last
                         if error_field.count() > 0:
@@ -362,16 +322,11 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                                 time.sleep(1)
                                 if modal.locator(".artdeco-inline-feedback--error").count() == 0:
                                     print("    ✅ Error cleared after numeric fix.")
-                                    continue # Retry the loop for this step
+                                    continue
 
                     print("  ⚠️ Form validation failing. Skipping job to avoid infinite loop.")
-                    if debug_mode: 
-                        png, html = take_screenshot(page, company_name, "form_validation_error", debug_mode)
-                        job['debug_screenshot'] = png
-                        job['debug_dom'] = html
                     break
 
-                # Scroll down the modal content to ensure Next/Submit buttons are visible
                 try:
                     page.evaluate("""() => {
                         const modalContent = document.querySelector('.artdeco-modal__content');
@@ -383,7 +338,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                 print("    ⏳ Holding form for 3 seconds for visual review...")
                 time.sleep(3)
 
-                # Back to the explicit text-based button matching that worked!
                 next_btn = modal.locator("button:has-text('Next')").first
                 review_btn = modal.locator("button:has-text('Review')").first
                 submit_btn = modal.locator("button:has-text('Submit application')").first
@@ -405,10 +359,6 @@ def linkedin_apply(matched_path=MATCHED_PATH, debug_mode=False):
                     print("    ➡️ Clicked 'Next'")
                 else:
                     print("  ⚠️ Could not find Next/Review/Submit buttons. Exiting modal.")
-                    if debug_mode: 
-                        png, html = take_screenshot(page, company_name, "no_modal_buttons", debug_mode)
-                        job['debug_screenshot'] = png
-                        job['debug_dom'] = html
                     break
 
         browser.close()
