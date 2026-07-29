@@ -141,6 +141,9 @@ def _check_scheduled_jobs():
     """Watchdog: fires any job whose scheduled minute has arrived.
     This guards against APScheduler cron misses when the process is launched
     by the native app or the machine sleeps/wakes."""
+    if get_process_status() == "running":
+        return
+
     now = datetime.now(scheduler.timezone)
     current_key = (now.hour, now.minute)
 

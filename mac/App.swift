@@ -265,6 +265,11 @@ class BackendManager {
     private var process: Process?
     private let projectRoot = "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation"
     private let baseUrl = URL(string: "http://127.0.0.1:8000/status")!
+    private let noCacheSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: config)
+    }()
 
     var isAlreadyRunning: Bool = false
     var pipelineWasRunningAtLaunch: Bool = false
@@ -284,7 +289,7 @@ class BackendManager {
         var request = URLRequest(url: baseUrl)
         request.timeoutInterval = 1.5
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await noCacheSession.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
         } catch {
             return false
@@ -380,7 +385,7 @@ class BackendManager {
         request.timeoutInterval = 1.5
         let semaphore = DispatchSemaphore(value: 0)
         var reachable = false
-        let task = URLSession.shared.dataTask(with: request) { _, response, _ in
+        let task = noCacheSession.dataTask(with: request) { _, response, _ in
             reachable = (response as? HTTPURLResponse)?.statusCode == 200
             semaphore.signal()
         }
@@ -397,7 +402,7 @@ class BackendManager {
         request.timeoutInterval = 1.5
         let semaphore = DispatchSemaphore(value: 0)
         var running = false
-        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+        let task = noCacheSession.dataTask(with: request) { data, response, _ in
             if let data = data,
                (response as? HTTPURLResponse)?.statusCode == 200,
                let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data),
@@ -435,6 +440,11 @@ class PipelineViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
     private var timer: Timer? = nil
+    private let noCacheSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: config)
+    }()
 
     init() { }
 
@@ -449,7 +459,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func checkOnboardingStatus() async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/onboarding/status")!)
+            let (data, response) = try await noCacheSession.data(from: URL(string: "\(baseUrl)/onboarding/status")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(OnboardingStatusResponse.self, from: data)
             onboardingConfigured = decoded.configured
@@ -462,7 +472,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func loadConfig() async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/config")!)
+            let (data, response) = try await noCacheSession.data(from: URL(string: "\(baseUrl)/config")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             currentConfig = try JSONDecoder().decode(ConfigResponse.self, from: data)
         } catch {
@@ -497,7 +507,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshStatus() async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/status")!)
+            let (data, response) = try await noCacheSession.data(from: URL(string: "\(baseUrl)/status")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 backendReachable = false
                 return
@@ -516,7 +526,7 @@ class PipelineViewModel: ObservableObject {
         do {
             var components = URLComponents(string: "\(baseUrl)/logs")!
             components.queryItems = [URLQueryItem(name: "lines", value: "200")]
-            let (data, response) = try await URLSession.shared.data(from: components.url!)
+            let (data, response) = try await noCacheSession.data(from: components.url!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(LogsResponse.self, from: data)
             logs = decoded.lines ?? []
@@ -528,7 +538,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshCron() async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/cron")!)
+            let (data, response) = try await noCacheSession.data(from: URL(string: "\(baseUrl)/cron")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(CronResponse.self, from: data)
             cronJobs = decoded.jobs
@@ -540,7 +550,7 @@ class PipelineViewModel: ObservableObject {
     @MainActor
     func refreshReport() async {
         do {
-            let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/report")!)
+            let (data, response) = try await noCacheSession.data(from: URL(string: "\(baseUrl)/report")!)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let decoded = try JSONDecoder().decode(ReportResponse.self, from: data)
             report = decoded
@@ -568,7 +578,7 @@ class PipelineViewModel: ObservableObject {
         )
         request.httpBody = try? JSONEncoder().encode(params)
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        noCacheSession.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "Start failed: \(error.localizedDescription)"
@@ -584,7 +594,7 @@ class PipelineViewModel: ObservableObject {
         guard let url = URL(string: "\(baseUrl)/stop") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        noCacheSession.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "Stop failed: \(error.localizedDescription)"
@@ -609,7 +619,7 @@ class PipelineViewModel: ObservableObject {
 
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        noCacheSession.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "Schedule update failed: \(error.localizedDescription)"
@@ -623,7 +633,7 @@ class PipelineViewModel: ObservableObject {
         guard let url = URL(string: "\(baseUrl)/scheduler/trigger") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        noCacheSession.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.errorMessage = "Run now failed: \(error.localizedDescription)"
@@ -642,7 +652,7 @@ class PipelineViewModel: ObservableObject {
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(payload)
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        noCacheSession.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     completion(false, error.localizedDescription)
@@ -679,7 +689,7 @@ class PipelineViewModel: ObservableObject {
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        noCacheSession.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     completion(false, error.localizedDescription)
@@ -701,7 +711,7 @@ class PipelineViewModel: ObservableObject {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        noCacheSession.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     completion(false, error.localizedDescription)
