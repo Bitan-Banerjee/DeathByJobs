@@ -4,6 +4,37 @@ import Foundation
 import Combine
 import UniformTypeIdentifiers
 
+// MARK: - Scrollbar Styler
+
+struct ScrollerStyler: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = StylerView()
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private class StylerView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        styleScrollView()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        styleScrollView()
+    }
+
+    private func styleScrollView() {
+        guard let scrollView = enclosingScrollView else { return }
+        scrollView.scrollerStyle = .legacy
+        scrollView.hasVerticalScroller = true
+        scrollView.verticalScroller?.knobStyle = .dark
+        scrollView.verticalScroller?.controlSize = .small
+    }
+}
+
 // MARK: - Design System & Theme
 
 struct AppTheme {
@@ -1698,13 +1729,16 @@ struct LogsView: View {
                         }
                         .id("logBottom")
                     }
-                    .frame(minHeight: 400)
+                    .scrollIndicators(.visible)
+                    .background(ScrollerStyler())
                     .onChange(of: viewModel.logs.count) {
                         withAnimation { proxy.scrollTo("logBottom", anchor: .bottom) }
                     }
                 }
             }
+            .frame(maxHeight: .infinity)
         }
+        .frame(maxHeight: .infinity)
     }
 
     private var backendOfflineBanner: some View {
@@ -2482,23 +2516,31 @@ struct ContentView: View {
         HStack(spacing: 0) {
             SidebarView(viewModel: viewModel, theme: theme)
             Rectangle().fill(theme.border).frame(width: 1)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    switch viewModel.page {
-                    case "dashboard":
-                        DashboardView(viewModel: viewModel, theme: theme)
-                    case "schedule":
-                        ScheduleView(viewModel: viewModel, theme: theme)
-                    case "logs":
+            Group {
+                if viewModel.page == "logs" {
+                    VStack(alignment: .leading, spacing: 0) {
                         LogsView(viewModel: viewModel, theme: theme)
-                    case "settings":
-                        SettingsView(viewModel: viewModel, theme: theme)
-                    default:
-                        DashboardView(viewModel: viewModel, theme: theme)
+                    }
+                    .padding(40)
+                    .frame(maxWidth: 960, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            switch viewModel.page {
+                            case "dashboard":
+                                DashboardView(viewModel: viewModel, theme: theme)
+                            case "schedule":
+                                ScheduleView(viewModel: viewModel, theme: theme)
+                            case "settings":
+                                SettingsView(viewModel: viewModel, theme: theme)
+                            default:
+                                DashboardView(viewModel: viewModel, theme: theme)
+                            }
+                        }
+                        .padding(40)
+                        .frame(maxWidth: 960, alignment: .topLeading)
                     }
                 }
-                .padding(40)
-                .frame(maxWidth: 960, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(theme.bg)
