@@ -272,10 +272,18 @@ class BackendManager {
     func startServerIfNeeded() async {
         if await backendIsReachable() {
             isAlreadyRunning = true
-            print("Native App: Backend already running.")
-            return
+            if !pipelineIsRunningNow() {
+                print("Native App: Backend already running — restarting to pick up latest code.")
+                stopServer()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                isAlreadyRunning = false
+            } else {
+                print("Native App: Backend already running with active pipeline — leaving it alone.")
+                return
+            }
+        } else {
+            isAlreadyRunning = false
         }
-        isAlreadyRunning = false
         pipelineWasRunningAtLaunch = lockFileExistsWithLiveProcess()
         await launchServer()
     }
@@ -435,7 +443,7 @@ class PipelineViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
     private var pollingTask: Task<Void, Never>? = nil
-    private lazy var pollingSession: URLSession = {
+    private let pollingSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         config.urlCache = nil
@@ -478,19 +486,20 @@ class PipelineViewModel: ObservableObject {
     }
 
     func startPolling() {
-        pollingTask?.cancel()
-        pollingTask = Task { [weak self] in
-            guard let self = self else { return }
-            while !Task.isCancelled {
-                await self.refreshAll()
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+        stopPolling()
+        Timer.publish(every: 3, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.refreshAll()
+                }
             }
-        }
+            .store(in: &cancellables)
+        Task { await refreshAll() }
     }
 
     func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        cancellables.removeAll()
     }
 
     @MainActor
@@ -511,11 +520,19 @@ class PipelineViewModel: ObservableObject {
                 return
             }
             let decoded = try JSONDecoder().decode(StatusResponse.self, from: data)
-            status = decoded.status
-            backendReachable = true
-            errorMessage = nil
+            if status != decoded.status || !backendReachable {
+                objectWillChange.send()
+                status = decoded.status
+                backendReachable = true
+                errorMessage = nil
+            } else if !backendReachable {
+                backendReachable = true
+            }
         } catch {
-            backendReachable = false
+            if backendReachable {
+                objectWillChange.send()
+                backendReachable = false
+            }
         }
     }
 
