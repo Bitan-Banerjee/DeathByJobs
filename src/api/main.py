@@ -49,7 +49,7 @@ if os.path.exists(UI_DIR):
     app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
 
 active_process = None
-scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+scheduler = BackgroundScheduler(timezone="Asia/Kolkata", job_defaults={"misfire_grace_time": 3600})
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -424,7 +424,33 @@ async def scheduler_status():
             "next_run": str(job.next_run_time) if job.next_run_time else None,
             "trigger": str(job.trigger),
         })
-    return {"jobs": jobs, "timezone": str(scheduler.timezone)}
+    return {"jobs": jobs, "timezone": str(scheduler.timezone), "running": scheduler.running}
+
+
+@app.post("/scheduler/reload")
+async def scheduler_reload():
+    """Reload the schedule from the JSON file without restarting the backend.
+    If a job's scheduled time has already passed today, it runs immediately."""
+    for job in scheduler.get_jobs():
+        job.remove()
+    load_schedule()
+
+    now = datetime.now(timezone.utc).astimezone()
+    triggered = []
+    for job in scheduler.get_jobs():
+        if job.next_run_time and job.next_run_time < now:
+            print(f"Scheduler: {job.name} was scheduled for {job.next_run_time} (already passed). Running now.")
+            scheduler.modify_job(job.id, next_run_time=now)
+            triggered.append(job.id)
+
+    return {"status": "reloaded", "jobs": len(scheduler.get_jobs()), "triggered_immediately": triggered}
+
+
+@app.post("/scheduler/trigger")
+async def scheduler_trigger():
+    """Immediately trigger the main pipeline run."""
+    run_main_pipeline()
+    return {"status": "triggered"}
 
 
 # ── Onboarding / Config endpoints ─────────────────────────────────────────────
