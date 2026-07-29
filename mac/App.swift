@@ -434,10 +434,11 @@ class PipelineViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private let baseUrl = "http://127.0.0.1:8000"
-    private var timer: Timer? = nil
+    private var pollingTask: Task<Void, Never>? = nil
     private lazy var pollingSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.urlCache = nil
         config.timeoutIntervalForRequest = 5
         return URLSession(configuration: config)
     }()
@@ -477,19 +478,19 @@ class PipelineViewModel: ObservableObject {
     }
 
     func startPolling() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            Task { [weak self] in
-                await self?.refreshAll()
+        pollingTask?.cancel()
+        pollingTask = Task { [weak self] in
+            guard let self = self else { return }
+            while !Task.isCancelled {
+                await self.refreshAll()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
-        RunLoop.current.add(timer!, forMode: .common)
-        Task { await refreshAll() }
     }
 
     func stopPolling() {
-        timer?.invalidate()
-        timer = nil
+        pollingTask?.cancel()
+        pollingTask = nil
     }
 
     @MainActor

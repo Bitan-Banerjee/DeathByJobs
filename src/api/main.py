@@ -44,6 +44,15 @@ from utils.resume_parser import derive_base_resume
 
 app = FastAPI(title="AI Job Pipeline API")
 
+# Prevent the native app from caching stale status/logs responses.
+@app.middleware("http")
+async def no_cache_middleware(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 # Serve UI
 UI_DIR = os.path.join(BRIDGE_DIR, "ui")
 if os.path.exists(UI_DIR):
