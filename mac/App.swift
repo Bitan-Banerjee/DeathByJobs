@@ -7,30 +7,38 @@ import UniformTypeIdentifiers
 // MARK: - Scrollbar Styler
 
 struct ScrollerStyler: NSViewRepresentable {
+    let content: AnyView
+
+    init<C: View>(@ViewBuilder content: () -> C) {
+        self.content = AnyView(content())
+    }
+
     func makeNSView(context: Context) -> NSView {
-        let view = StylerView()
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private class StylerView: NSView {
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        styleScrollView()
-    }
-
-    override func viewDidMoveToSuperview() {
-        super.viewDidMoveToSuperview()
-        styleScrollView()
-    }
-
-    private func styleScrollView() {
-        guard let scrollView = enclosingScrollView else { return }
-        scrollView.verticalScroller = BlackScroller()
+        let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
+        scrollView.verticalScroller = BlackScroller()
         scrollView.scrollerStyle = .legacy
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.autohidesScrollers = false
+
+        let hosting = NSHostingView(rootView: content)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = hosting
+
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            hosting.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+        ])
+
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let scrollView = nsView as? NSScrollView,
+              let hosting = scrollView.documentView as? NSHostingView<AnyView> else { return }
+        hosting.rootView = content
     }
 }
 
@@ -1734,19 +1742,11 @@ struct LogsView: View {
             }
 
             ThemedCard(theme: theme) {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 3) {
-                            ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { _, line in
-                                LogLineView(line: line, theme: theme)
-                            }
+                ScrollerStyler {
+                    LazyVStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { _, line in
+                            LogLineView(line: line, theme: theme)
                         }
-                        .id("logBottom")
-                    }
-                    .scrollIndicators(.visible)
-                    .background(ScrollerStyler())
-                    .onChange(of: viewModel.logs.count) {
-                        withAnimation { proxy.scrollTo("logBottom", anchor: .bottom) }
                     }
                 }
             }
