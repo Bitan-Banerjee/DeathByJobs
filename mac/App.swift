@@ -28,10 +28,24 @@ private class StylerView: NSView {
 
     private func styleScrollView() {
         guard let scrollView = enclosingScrollView else { return }
-        scrollView.scrollerStyle = .legacy
+        scrollView.verticalScroller = BlackScroller()
         scrollView.hasVerticalScroller = true
-        scrollView.verticalScroller?.knobStyle = .dark
-        scrollView.verticalScroller?.controlSize = .small
+        scrollView.scrollerStyle = .legacy
+    }
+}
+
+private class BlackScroller: NSScroller {
+    override func drawKnob() {
+        let knobRect = rect(for: .knob)
+        let path = NSBezierPath(rect: knobRect)
+        NSColor.black.setFill()
+        path.fill()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        dirtyRect.fill()
+        drawKnob()
     }
 }
 
