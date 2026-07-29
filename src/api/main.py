@@ -91,17 +91,31 @@ class OnboardingPayload(BaseModel):
 
 # ── Scheduled Job Functions ───────────────────────────────────────────────────
 
+def _launch_pipeline(cmd: list[str]) -> dict:
+    """Shared launch helper for both manual Start and scheduled runs.
+    Writes to logs/api_run.log so dashboard/status/logs stay consistent."""
+    global active_process
+    if active_process is not None and active_process.poll() is None:
+        return {"status": "already_running", "pid": active_process.pid}
+    if _pipeline_is_running_from_lock():
+        pid = _get_lock_pid()
+        return {"status": "already_running", "pid": pid}
+
+    log_path = os.path.join(BASE_DIR, "logs", "api_run.log")
+    log_file = open(log_path, "w")
+    active_process = subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
+    return {"status": "started", "pid": active_process.pid}
+
+
 def run_main_pipeline():
-    """Runs the main job application pipeline."""
+    """Runs the main job application pipeline (scheduled or manual)."""
     print("Scheduler: Kicking off main pipeline run.")
     main_script_path = os.path.join(BASE_DIR, "src", "automation", "main.py")
     cmd = [
         sys.executable, "-u", main_script_path,
         "--target", "50", "--max-loops", "4", "--jobs", "25"
     ]
-    log_path = os.path.join(BASE_DIR, "logs", "daily_run.log")
-    with open(log_path, "w") as log_file:
-        subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
+    _launch_pipeline(cmd)
 
 
 def _job_listener(event):
@@ -263,7 +277,6 @@ async def start_job_simple():
 
 @app.post("/start")
 async def start_pipeline(params: PipelineParams):
-    global active_process
     if get_process_status() == "running":
         raise HTTPException(status_code=400, detail="Pipeline already running.")
 
@@ -276,10 +289,8 @@ async def start_pipeline(params: PipelineParams):
     elif params.mode == "resume":
         cmd.append("--resume")
 
-    log_path = os.path.join(BASE_DIR, "logs", "api_run.log")
-    log_file = open(log_path, "w")
-    active_process = subprocess.Popen(cmd, cwd=BASE_DIR, stdout=log_file, stderr=subprocess.STDOUT)
-    return {"status": "started", "pid": active_process.pid}
+    result = _launch_pipeline(cmd)
+    return {"status": result["status"], "pid": result["pid"]}
 
 def _kill_orphan_browsers():
     """Best-effort cleanup of lingering Chromium/Playwright processes."""
