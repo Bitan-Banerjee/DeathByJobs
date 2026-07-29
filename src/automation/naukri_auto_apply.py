@@ -537,18 +537,14 @@ def naukri_apply(matched_path=MATCHED_PATH):
                                 stuck_count = 0
 
                             print(f"    📝 Step {round_num+1}: Found {len(questions)} question(s)")
-                            # Capture evidence for every round to see the UI state
-                            if debug_mode: take_screenshot(page, company_name, f"round_{round_num+1}_pre_answer", debug_mode)
                             
                             answer_questions(page, questions, registry)
                             submit_form(page)
                             
-                            # Capture evidence after submit to see if it stuck
+                            # Brief pause after submit to let UI settle
                             time.sleep(2)
-                            if debug_mode: take_screenshot(page, company_name, f"round_{round_num+1}_post_submit", debug_mode)
                         else:
                             print("  ⚠️ Max rounds (10) reached. Likely stuck."); job['status'] = 'skipped_too_many_rounds'
-                            if debug_mode: take_screenshot(page, company_name, "stuck_loop", debug_mode)
 
             except Exception as e:
                 print(f"  ⚠️ Error: {str(e).split('\\n')[0]}")

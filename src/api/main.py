@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.base import JobLookupError
+from apscheduler import events as aps_events
 import atexit
 
 # --- PATH SETUP ---
@@ -120,19 +121,20 @@ def run_main_pipeline():
 
 def _job_listener(event):
     """APScheduler event listener for debugging missed/executed jobs."""
-    if event.exception:
+    if hasattr(event, 'exception') and event.exception:
         print(f"Scheduler: Job '{event.job_id}' crashed: {event.exception}")
     else:
-        if event.code == 1:  # EVENT_JOB_EXECUTED
+        code = getattr(event, 'code', None)
+        if code == aps_events.EVENT_JOB_EXECUTED:
             print(f"Scheduler: Job '{event.job_id}' executed successfully.")
-        elif event.code == 2:  # EVENT_JOB_ERROR
+        elif code == aps_events.EVENT_JOB_ERROR:
             print(f"Scheduler: Job '{event.job_id}' errored.")
-        elif event.code == 4:  # EVENT_JOB_MISSED
+        elif code == aps_events.EVENT_JOB_MISSED:
             print(f"Scheduler: Job '{event.job_id}' MISSED at {event.scheduled_run_time}.")
-        elif event.code == 8:  # EVENT_JOB_MODIFIED
-            print(f"Scheduler: Job '{event.job_id}' modified.")
+        elif code == aps_events.EVENT_JOB_SUBMITTED:
+            print(f"Scheduler: Job '{event.job_id}' submitted.")
 
-scheduler.add_listener(_job_listener)
+scheduler.add_listener(_job_listener, aps_events.EVENT_ALL)
 
 
 def _check_scheduled_jobs():

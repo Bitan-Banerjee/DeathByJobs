@@ -13,8 +13,6 @@ sys.path.insert(0, SRC_DIR)
 from linkedin_auto_apply import linkedin_apply as auto_apply
 from naukri_auto_apply import naukri_apply
 from utils.export_tracker import export_to_excel
-from utils.ai_debug_service import analyze_job_failure
-from utils.ai_patcher import run_debug_script
 
 BASE_DIR = os.path.dirname(SRC_DIR)
 FAILED_PATH = os.path.join(BASE_DIR, 'data', 'failed_applications.json')
@@ -41,43 +39,7 @@ def load_safe_json(path):
                 return json.loads(content, strict=False)
             return None
 
-def analyze_failure_with_ai(job):
-    """Invokes Gemini to analyze evidence and attempts auto-fix loop."""
-    screenshot = job.get('debug_screenshot')
-    dom = job.get('debug_dom')
-    if not screenshot or not dom:
-        return
-    
-    print(f"    🧠 [AI DEBUGGER] Starting Auto-Debug for {job.get('company')}...")
-    raw_response = analyze_job_failure(job, screenshot, dom)
-    
-    # AI response can be markdown with JSON or pure JSON
-    try:
-        if "```json" in raw_response:
-            json_str = raw_response.split("```json")[1].split("```")[0].strip()
-        else:
-            json_str = raw_response.strip()
-            
-        debug_data = json.loads(json_str)
-        script = debug_data.get('debug_script')
-        company = job.get('company', 'unknown')
-        
-        if script:
-            success, output = run_debug_script(script, company)
-            if success:
-                print(f"    🌟 [SUCCESS] Debug script worked for {company}!")
-                # Mark for manual patch review or auto-patch logic here
-            else:
-                print(f"    🔄 [FAIL] Debug script failed. Evidence captured for next loop.")
-    except Exception as e:
-        print(f"    ⚠️ Could not parse AI Debug response: {e}")
-        # Save raw response for human review
-        log_dir = os.path.join(BASE_DIR, 'logs', 'ai_analysis')
-        os.makedirs(log_dir, exist_ok=True)
-        with open(os.path.join(log_dir, f"fail_{company}.md"), 'w') as f:
-            f.write(raw_response)
-
-def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
+def retry_failed_jobs(linkedin_only=False, naukri_only=False):
     if not os.path.exists(FAILED_PATH):
         print("✅ No failed applications found.")
         return
@@ -105,7 +67,7 @@ def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
         print("✅ No jobs to retry based on current filters.")
         return
 
-    print(f"🔄 Retrying {len(linkedin_jobs)} LinkedIn and {len(naukri_jobs)} Naukri jobs (Debug Mode: {debug_mode}).")
+    print(f"🔄 Retrying {len(linkedin_jobs)} LinkedIn and {len(naukri_jobs)} Naukri jobs.")
     
     # We will reconstruct the failed list after processing
     # Start with the jobs we are NOT retrying this time
@@ -115,7 +77,7 @@ def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
         temp_path = os.path.join(BASE_DIR, 'data', 'linkedin_matched_jobs.json')
         with open(temp_path, 'w') as f: json.dump({"approved_jobs": linkedin_jobs}, f, indent=4)
         print("\n🚀 Retrying LinkedIn Jobs...")
-        auto_apply(matched_path=temp_path, debug_mode=debug_mode)
+        auto_apply(matched_path=temp_path)
         export_to_excel(matched_path=temp_path)
         
         try:
@@ -124,7 +86,6 @@ def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
                 status = j.get('status')
                 if status not in ['applied', 'skipped_low_score', 'expired']:
                     j['retry_count'] = j.get('retry_count', 0) + 1
-                    if debug_mode: analyze_failure_with_ai(j)
                     still_failed.append(j)
                 elif status == 'expired':
                     print(f"  🗑️ Removed expired LinkedIn job: {j.get('company')}")
@@ -135,7 +96,7 @@ def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
         temp_path = os.path.join(BASE_DIR, 'data', 'naukri_matched_jobs.json')
         with open(temp_path, 'w') as f: json.dump({"approved_jobs": naukri_jobs}, f, indent=4)
         print("\n🚀 Retrying Naukri Jobs...")
-        naukri_apply(matched_path=temp_path, debug_mode=debug_mode)
+        naukri_apply(matched_path=temp_path)
         export_to_excel(matched_path=temp_path)
         
         try:
@@ -144,7 +105,6 @@ def retry_failed_jobs(linkedin_only=False, naukri_only=False, debug_mode=True):
                 status = j.get('status')
                 if status not in ['applied', 'skipped_low_score', 'expired']:
                     j['retry_count'] = j.get('retry_count', 0) + 1
-                    if debug_mode: analyze_failure_with_ai(j)
                     still_failed.append(j)
                 elif status == 'expired':
                     print(f"  🗑️ Removed expired Naukri job: {j.get('company')}")
@@ -161,9 +121,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retry failed job applications.")
     parser.add_argument("--linkedin-only", action="store_true", help="Retry only LinkedIn jobs.")
     parser.add_argument("--naukri-only", action="store_true", help="Retry only Naukri jobs.")
-    parser.add_argument("--no-debug", action="store_true", help="Disable debug mode (screenshots/DOM).")
     args = parser.parse_args()
     
     retry_failed_jobs(linkedin_only=args.linkedin_only, 
-                      naukri_only=args.naukri_only, 
-                      debug_mode=not args.no_debug)
+                      naukri_only=args.naukri_only)
