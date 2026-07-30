@@ -1,0 +1,141 @@
+📝 Logging this run to: /Users/priyanka/Library/Application Support/DeathByJobs/logs/2026/07/30/run_18-03-55.log
+
+🎯 DAILY QUOTA MODE ACTIVATED: Target 50 Applications
+
+📊 Current Applications Today: 0 / 50
+
+🔄 --- PIPELINE LOOP 1/4 (Attempting to find 50 more matches) ---
+
+==================================================
+🚀🚀🚀 STARTING NAUKRI PIPELINE 🚀🚀🚀
+📍 Starting from STAGE 1
+==================================================
+
+[STAGE 0/4] ⚡ Refreshing Naukri profile (Uploading resume)...
+
+[WARNING] ⚠️ Naukri Profile refresh failed: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝. Continuing...
+
+[STAGE 1/4] 🌐 Scraping fresh jobs from Naukri...
+🌐 Booting up Naukri Scraper for 'Reconciliation' (Resuming from Page 1)...
+
+[CRITICAL FAILURE] 🔥 Naukri Pipeline failed at STAGE 1: SOURCING.
+  └─ Error: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+
+==================================================
+🚀🚀🚀 STARTING LINKEDIN PIPELINE 🚀🚀🚀
+📍 Starting from STAGE 1
+==================================================
+
+[STAGE 1/5] 🌐 Scraping fresh jobs from LinkedIn...
+
+[CRITICAL FAILURE] 🔥 LinkedIn Pipeline failed at STAGE 1: SOURCING.
+  └─ Error: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+⚠️ Pipeline encountered errors. Resting for 60s...
+
+📊 Current Applications Today: 0 / 50
+
+🔄 --- PIPELINE LOOP 2/4 (Attempting to find 50 more matches) ---
+
+==================================================
+🚀🚀🚀 STARTING NAUKRI PIPELINE 🚀🚀🚀
+📍 Starting from STAGE 1
+==================================================
+
+[STAGE 1/4] 🌐 Scraping fresh jobs from Naukri...
+🌐 Booting up Naukri Scraper for 'Reconciliation' (Resuming from Page 1)...
+
+[CRITICAL FAILURE] 🔥 Naukri Pipeline failed at STAGE 1: SOURCING.
+  └─ Error: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+⏭️ Skipping LinkedIn scraping for loop > 1.
+⚠️ Pipeline encountered errors. Resting for 60s...
+
+📊 Current Applications Today: 0 / 50
+
+🔄 --- PIPELINE LOOP 3/4 (Attempting to find 50 more matches) ---
+
+==================================================
+🚀🚀🚀 STARTING NAUKRI PIPELINE 🚀🚀🚀
+📍 Starting from STAGE 1
+==================================================
+
+[STAGE 1/4] 🌐 Scraping fresh jobs from Naukri...
+🌐 Booting up Naukri Scraper for 'Reconciliation' (Resuming from Page 1)...
+
+[CRITICAL FAILURE] 🔥 Naukri Pipeline failed at STAGE 1: SOURCING.
+  └─ Error: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+⏭️ Skipping LinkedIn scraping for loop > 1.
+⚠️ Pipeline encountered errors. Resting for 60s...
+
+📊 Current Applications Today: 0 / 50
+
+🔄 --- PIPELINE LOOP 4/4 (Attempting to find 50 more matches) ---
+
+==================================================
+🚀🚀🚀 STARTING NAUKRI PIPELINE 🚀🚀🚀
+📍 Starting from STAGE 1
+==================================================
+
+[STAGE 1/4] 🌐 Scraping fresh jobs from Naukri...
+🌐 Booting up Naukri Scraper for 'Reconciliation' (Resuming from Page 1)...
+
+[CRITICAL FAILURE] 🔥 Naukri Pipeline failed at STAGE 1: SOURCING.
+  └─ Error: BrowserType.launch: Executable doesn't exist at /Applications/DeathByJobs.app/Contents/Resources/playwright-browsers/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     playwright install                                     ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+⏭️ Skipping LinkedIn scraping for loop > 1.
+⚠️ Pipeline encountered errors. Resting for 60s...
+
+⚠️ Reached max loops (4). Did not hit quota. Resting until tomorrow.
+
+📥 Quarantining any remaining failed applications from the final loop...
+
+🔄 Triggering Auto-Retry & Debugging for all failed jobs...
+✅ No failed applications found.
+
+🧹 Final cleanup complete.

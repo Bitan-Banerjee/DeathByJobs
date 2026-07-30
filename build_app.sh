@@ -87,7 +87,8 @@ echo "📂  Copying backend resources…"
 cp -R "$PROJECT_ROOT/src"         "$RES_DIR/src"
 cp -R "$PROJECT_ROOT/config"      "$RES_DIR/config"
 # Only copy schedule.json as default; user data files are generated at runtime
-cp "$PROJECT_ROOT/data/schedule.json" "$RES_DIR/data/schedule.json" 2>/dev/null || true
+mkdir -p "$RES_DIR/data"
+cp "$PROJECT_ROOT/data/schedule.json" "$RES_DIR/data/schedule.json"
 cp -R "$PROJECT_ROOT/templates"   "$RES_DIR/templates"
 cp -R "$PROJECT_ROOT/context"     "$RES_DIR/context"
 

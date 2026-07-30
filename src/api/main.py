@@ -156,8 +156,14 @@ def _check_scheduled_jobs():
     now = datetime.now(scheduler.timezone)
     current_key = (now.hour, now.minute)
 
-    with open(SCHEDULE_FILE, 'r') as f:
-        config = json.load(f)
+    if not os.path.exists(SCHEDULE_FILE):
+        load_schedule()
+    try:
+        with open(SCHEDULE_FILE, 'r') as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Scheduler watchdog: Failed to read schedule: {e}")
+        return
 
     for job_info in config.get("jobs", []):
         if not job_info.get("enabled"):
@@ -193,11 +199,46 @@ def run_naukri_update():
 SCHEDULE_FILE = os.path.join(BASE_DIR, "data", "schedule.json")
 
 def load_schedule():
-    """Loads schedule from JSON file and configures the scheduler."""
+    """Loads schedule from JSON file and configures the scheduler.
+    Creates a default schedule if none exists."""
     if not os.path.exists(SCHEDULE_FILE):
+        os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
+        default_schedule = {
+            "jobs": [
+                {
+                    "id": "main_pipeline",
+                    "name": "Full Job Pipeline",
+                    "func": "src.api.main:run_main_pipeline",
+                    "trigger": "cron",
+                    "hour": 9,
+                    "minute": 0,
+                    "enabled": True,
+                },
+                {
+                    "id": "naukri_resume_upload",
+                    "name": "Naukri Resume Upload",
+                    "func": "src.api.main:run_naukri_update",
+                    "trigger": "cron",
+                    "hour": 9,
+                    "minute": 30,
+                    "enabled": True,
+                },
+            ]
+        }
+        try:
+            with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_schedule, f, indent=2)
+            print(f"Scheduler: Created default schedule at {SCHEDULE_FILE}")
+        except OSError as e:
+            print(f"Scheduler: Could not create default schedule: {e}")
+            return
+
+    try:
+        with open(SCHEDULE_FILE, 'r') as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Scheduler: Failed to load schedule: {e}")
         return
-    with open(SCHEDULE_FILE, 'r') as f:
-        config = json.load(f)
 
     for job_info in config.get("jobs", []):
         if job_info.get("enabled"):
