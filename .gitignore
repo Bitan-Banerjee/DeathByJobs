@@ -21,6 +21,10 @@ base_resume.md
 # Session files that might be created by automation scripts
 *_session.json
 
+# Shared debug logs
+*deathbyjobs*.txt
+*_pipeline.log
+
 # Common document formats that might contain personal resume data
 *.docx
 *.doc
