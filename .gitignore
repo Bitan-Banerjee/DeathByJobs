@@ -34,8 +34,8 @@ latest_run.md
 context/OPENCODE_CONTEXT.md
 
 # Compiled macOS app bundle artifacts
-DeathByJobs.app/
-DeathByJobs.dmg
+DeathByJobs.app
+DeathByJobs*.dmg
 /build/
 
 # IDE / Editor specific settings
