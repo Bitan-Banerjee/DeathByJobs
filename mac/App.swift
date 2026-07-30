@@ -389,11 +389,19 @@ class BackendManager {
     }
 
     /// Extract bundled Python to user data directory if not yet extracted.
+    /// A version-stamp file ensures updates re-extract even when python exists.
     private func ensureExtractedPython() {
         let fm = FileManager.default
         let destDir = userDataPath + "/python"
-        if fm.fileExists(atPath: destDir + "/bin/python3.12") {
-            print("Native App: Python already extracted at \(destDir)")
+        let stampPath = destDir + "/.deathbyjobs_python_bundle_version"
+        let currentBundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        let expectedVersion = currentBundleVersion + "-" + buildNumber
+
+        if let existingVersion = try? String(contentsOfFile: stampPath, encoding: .utf8),
+           existingVersion.trimmingCharacters(in: .whitespacesAndNewlines) == expectedVersion,
+           fm.fileExists(atPath: destDir + "/bin/python3.12") {
+            print("Native App: Python already extracted at \(destDir) (version \(expectedVersion))")
             return
         }
 
@@ -412,6 +420,7 @@ class BackendManager {
             task.waitUntilExit()
             if task.terminationStatus == 0 {
                 print("Native App: Python extracted to \(destDir)")
+                try? expectedVersion.write(toFile: stampPath, atomically: true, encoding: .utf8)
             } else {
                 print("Native App Warning: rsync exited with status \(task.terminationStatus)")
             }
