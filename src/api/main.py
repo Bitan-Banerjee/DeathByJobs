@@ -16,7 +16,7 @@ import atexit
 
 # --- PATH SETUP ---
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.dirname(os.path.dirname(BRIDGE_DIR)) # Adjusted to be project root
+BASE_DIR = os.environ.get("DEATHBYJOBS_BASE_DIR") or os.path.dirname(os.path.dirname(BRIDGE_DIR))
 SRC_DIR = os.path.join(BASE_DIR, "src")
 sys.path.insert(0, BASE_DIR)
 sys.path.insert(0, SRC_DIR)
