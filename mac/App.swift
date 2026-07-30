@@ -363,19 +363,66 @@ class BackendManager {
     private var bundleExecutablePath: String {
         Bundle.main.bundlePath + "/Contents/MacOS"
     }
-    private var pythonPath: String {
-        bundleResourcePath + "/python/bin/python3.12"
-    }
-    private var launcherPath: String {
-        bundleExecutablePath + "/backend_launcher.py"
-    }
-    // User-writable data directory
     private var userDataPath: String {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path ?? ""
         return appSupport + "/DeathByJobs"
     }
 
+    /// Path to the extracted Python in user data (avoids quarantine issues).
+    private var extractedPythonPath: String {
+        userDataPath + "/python/bin/python3.12"
+    }
+
+    /// The Python binary we should actually use.
+    private var pythonPath: String {
+        // Always use extracted Python to avoid quarantine issues on downloaded apps.
+        return extractedPythonPath
+    }
+
+    /// Where python resources (site-packages etc.) live.
+    private var pythonRootPath: String {
+        userDataPath + "/python"
+    }
+
+    private var launcherPath: String {
+        bundleExecutablePath + "/backend_launcher.py"
+    }
+
+    /// Extract bundled Python to user data directory if not yet extracted.
+    private func ensureExtractedPython() {
+        let fm = FileManager.default
+        let destDir = userDataPath + "/python"
+        if fm.fileExists(atPath: destDir + "/bin/python3.12") {
+            print("Native App: Python already extracted at \(destDir)")
+            return
+        }
+
+        print("Native App: Extracting Python to user data dir…")
+        let sourceDir = bundleResourcePath + "/python"
+        guard fm.fileExists(atPath: sourceDir) else {
+            print("Native App Error: No bundled Python found at \(sourceDir)")
+            return
+        }
+        try? fm.createDirectory(atPath: destDir, withIntermediateDirectories: true)
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/rsync")
+        task.arguments = ["-a", "--delete", sourceDir + "/", destDir + "/"]
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus == 0 {
+                print("Native App: Python extracted to \(destDir)")
+            } else {
+                print("Native App Warning: rsync exited with status \(task.terminationStatus)")
+            }
+        } catch {
+            print("Native App Error: Failed to extract Python: \(error)")
+        }
+    }
+
     func startServerIfNeeded() async {
+        print("Native App: Starting server check. pythonPath = \(pythonPath)")
+        ensureExtractedPython()
         if await backendIsReachable() {
             isAlreadyRunning = true
             if !pipelineIsRunningNow() {
@@ -415,7 +462,7 @@ class BackendManager {
         var env = ProcessInfo.processInfo.environment
         env["DEATHBYJOBS_RESOURCE_DIR"] = bundleResourcePath
         env["DEATHBYJOBS_DATA_DIR"] = userDataPath
-        env["DEATHBYJOBS_PYTHON_ROOT"] = bundleResourcePath + "/python"
+        env["DEATHBYJOBS_PYTHON_ROOT"] = pythonRootPath
         env["PLAYWRIGHT_BROWSERS_PATH"] = bundleResourcePath + "/playwright-browsers"
         p.environment = env
 

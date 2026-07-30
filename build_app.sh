@@ -69,6 +69,13 @@ else
     echo "     The app will require system Python. Continuing anyway…"
 fi
 
+# Install Python dependencies into the extracted Python
+if [[ -d "$PYTHON_DIR" && -f "$PROJECT_ROOT/requirements.txt" ]]; then
+    echo "📦  Installing Python dependencies…"
+    "$PYTHON_DIR/bin/pip3" install -r "$PROJECT_ROOT/requirements.txt" >/dev/null 2>&1 || \
+        echo "⚠️   pip install failed (some packages may be missing)"
+fi
+
 if [[ -d "$PYTHON_DIR" ]]; then
     cp -R "$PYTHON_DIR" "$RES_DIR/python"
     echo "✅  Python bundled → $RES_DIR/python"
@@ -188,7 +195,17 @@ if not os.path.exists(api_main):
     print(f"FATAL: API entry point not found: {api_main}", file=sys.stderr)
     sys.exit(1)
 
-cmd = [sys.executable, "-u", api_main]
+# Use uvicorn module to serve the FastAPI app.
+# main:app is the FastAPI instance in src/api/main.py
+src_dir = os.path.join(RESOURCE_DIR, "src")
+os.chdir(src_dir)
+sys.path.insert(0, RESOURCE_DIR)
+sys.path.insert(0, src_dir)
+src_api_dir = os.path.join(src_dir, "api")
+if src_api_dir not in sys.path:
+    sys.path.insert(0, src_api_dir)
+
+cmd = [sys.executable, "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "8000"]
 cmd.extend(sys.argv[1:])
 subprocess.run(cmd)
 PYEOF
