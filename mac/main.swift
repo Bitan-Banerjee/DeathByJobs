@@ -1,3 +1,3 @@
 import SwiftUI
 
-AiAutomationApp.main()
+DeathByJobsApp.main()

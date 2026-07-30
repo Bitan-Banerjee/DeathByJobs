@@ -34,10 +34,10 @@ latest_run.md
 context/OPENCODE_CONTEXT.md
 
 # Compiled macOS app bundle artifacts
-AiAutomation.app/Contents/MacOS/AiAutomation
-AiAutomation.app/Contents/Info.plist
-AiAutomation.app/Contents/Resources/
-AiAutomation.app/Contents/_CodeSignature/
+DeathByJobs.app/Contents/MacOS/DeathByJobs
+DeathByJobs.app/Contents/Info.plist
+DeathByJobs.app/Contents/Resources/
+DeathByJobs.app/Contents/_CodeSignature/
 
 # IDE / Editor specific settings
 .vscode/

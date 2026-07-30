@@ -17,14 +17,14 @@
 
 ### 2. Main Pipeline
 - Verified stealth via `from playwright_stealth import stealth_sync`.
-- Resume: `python3 AiAutomation/scripts/main.py --naukri-only --resume`.
+- Resume: `python3 DeathByJobs/scripts/main.py --naukri-only --resume`.
 - Successful: CGI, Pylon, TCS, Kazhuga. Gemini API batch logic OK.
 
 ### 3. Deep Cleanup & Optimization
-- **Relocation:** Moved `GEMINI.md` and `AI_CONTEXT.md` to `AiAutomation/context/` for a cleaner root directory.
+- **Relocation:** Moved `GEMINI.md` and `AI_CONTEXT.md` to `DeathByJobs/context/` for a cleaner root directory.
 - **Script Renaming:** Renamed `auto_apply.py` to `linkedin_auto_apply.py` and its main function to `linkedin_apply` for consistency. Updated all internal imports and references.
 - **Deduplication Logic:** Removed the (Company, Title) "Role Pair" check from `naukri_scraper.py` and `linkedin_scraper.py`. The bot now only deduplicates based on the unique normalized URL, allowing multiple applications to identical roles if they are posted via different URLs/IDs.
-- **Folder Cleanup:** Removed redundant `AiAutomation/scripts/logs/` and merged logging to root `logs/`.
+- **Folder Cleanup:** Removed redundant `DeathByJobs/scripts/logs/` and merged logging to root `logs/`.
 - **Duplicate Removal:** Deleted duplicate `Job_Applications_Tracker.csv` from `scripts/` (Root version is authoritative).
 - **Redundant Scripts:** Purged obsolete session debuggers (`auto_save_session.py`, `continuous_save.py`, `reset_applied.py`, `test_session.py`).
 - **File System:** Removed `.DS_Store` noise and deleted original markdown backups (`.original.md`) to minimize context.

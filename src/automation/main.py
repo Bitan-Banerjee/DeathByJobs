@@ -8,6 +8,7 @@ from datetime import datetime
 import atexit
 import signal
 from pathlib import Path
+import shutil
 
 # --- GLOBAL CONFIG & PATHS ---
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -120,15 +121,45 @@ class TeeLogger(object):
         for f in self.files:
             f.flush()
 
+def cleanup_old_logs():
+    """Delete all archive logs except the current month (YYYY/MM)."""
+    now = datetime.now()
+    current_year = str(now.year)
+    current_month = f"{now.month:02d}"
+    logs_base = os.path.join(BASE_DIR, 'logs')
+    if not os.path.exists(logs_base):
+        return
+    for year_dir in os.listdir(logs_base):
+        year_path = os.path.join(logs_base, year_dir)
+        if not os.path.isdir(year_path):
+            continue
+        for month_dir in os.listdir(year_path):
+            month_path = os.path.join(year_path, month_dir)
+            if not os.path.isdir(month_path):
+                continue
+            if year_dir == current_year and month_dir == current_month:
+                continue
+            try:
+                shutil.rmtree(month_path)
+                print(f"🗑️  Deleted old log month: {year_dir}/{month_dir}")
+            except Exception as e:
+                print(f"⚠️  Failed to delete {year_dir}/{month_dir}: {e}")
+        if os.path.isdir(year_path) and not os.listdir(year_path):
+            os.rmdir(year_path)
+
+
 def setup_logging():
     now = datetime.now()
+
+    # 1. Delete old log months before creating new logs
+    cleanup_old_logs()
     
-    # 1. Setup daily archive log
+    # 2. Setup daily archive log
     log_dir = os.path.join(BASE_DIR, 'logs', now.strftime("%Y"), now.strftime("%m"), now.strftime("%d"))
     os.makedirs(log_dir, exist_ok=True)
     log_filename = os.path.join(log_dir, f"run_{now.strftime('%H-%M-%S')}.log")
     
-    # 2. Setup a static Markdown mirror for the AI context
+    # 3. Setup a static Markdown mirror for the AI context
     latest_filename = os.path.join(BASE_DIR, "latest_run.md")
     with open(latest_filename, "w", encoding="utf-8") as f:
         f.write(f"# Pipeline Run: {now.strftime('%Y-%m-%d %H:%M:%S')}\n\n```text\n")

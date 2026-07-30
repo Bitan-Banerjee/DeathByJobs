@@ -28,8 +28,8 @@ You will need Python 3.10+ and an API key from at least one supported LLM provid
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/AiAutomation.git
-cd AiAutomation
+git clone https://github.com/yourusername/DeathByJobs.git
+cd DeathByJobs
 ```
 
 ### 2. Install Dependencies
@@ -43,7 +43,7 @@ playwright install chromium
 ## Configuration
 
 ### macOS App (Recommended)
-Open `AiAutomation.app`. It will auto-start the backend and, if no profile exists, open an onboarding form asking for:
+Open `DeathByJobs.app`. It will auto-start the backend and, if no profile exists, open an onboarding form asking for:
 - Your target role, experience, location, and skills
 - Excluded / current companies
 - Skill-match variance (strict / moderate / loose)
@@ -88,12 +88,12 @@ python3 src/automation/main.py --resume
 ```
 
 ### Run via the macOS App
-Double-click `AiAutomation.app`. The app auto-starts the FastAPI backend on `127.0.0.1:8000` and opens the dashboard.
+Double-click `DeathByJobs.app`. The app auto-starts the FastAPI backend on `127.0.0.1:8000` and opens the dashboard.
 
 ### Automating with Cron (macOS/Linux)
 To run the bot completely hands-free every morning at 9:00 AM, add this to your `crontab -e`:
 ```bash
-0 9 * * * cd /path/to/AiAutomation && /usr/local/bin/python3 scripts/main.py --target 50
+0 9 * * * cd /path/to/DeathByJobs && /usr/local/bin/python3 scripts/main.py --target 50
 ```
 
 ---
@@ -135,7 +135,7 @@ To run the bot completely hands-free every morning at 9:00 AM, add this to your 
 ## Directory Structure
 
 ```text
-AiAutomation/
+DeathByJobs/
 ├── context/                    # AI Memory (GEMINI.md, AI_CONTEXT.md, Troubleshooting)
 ├── scripts/
 │   ├── main.py                 # Master Orchestrator & Looping Agent

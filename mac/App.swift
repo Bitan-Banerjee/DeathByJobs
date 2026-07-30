@@ -351,11 +351,29 @@ struct ProvidersConfig: Codable {
 class BackendManager {
     static let shared = BackendManager()
     private var process: Process?
-    private let projectRoot = "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation"
     private let baseUrl = URL(string: "http://127.0.0.1:8000/status")!
 
     var isAlreadyRunning: Bool = false
     var pipelineWasRunningAtLaunch: Bool = false
+
+    // Paths inside the app bundle
+    private var bundleResourcePath: String {
+        Bundle.main.resourcePath ?? ""
+    }
+    private var bundleExecutablePath: String {
+        Bundle.main.bundlePath + "/Contents/MacOS"
+    }
+    private var pythonPath: String {
+        bundleResourcePath + "/python/bin/python3.12"
+    }
+    private var launcherPath: String {
+        bundleExecutablePath + "/backend_launcher.py"
+    }
+    // User-writable data directory
+    private var userDataPath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path ?? ""
+        return appSupport + "/DeathByJobs"
+    }
 
     func startServerIfNeeded() async {
         if await backendIsReachable() {
@@ -389,14 +407,19 @@ class BackendManager {
 
     private func launchServer() async {
         killPort8000()
-        let pythonPath = findPythonPath()
         let p = Process()
         p.executableURL = URL(fileURLWithPath: pythonPath)
-        p.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
-        let pythonCmd = "import sys, uvicorn; sys.path.insert(0, '\(projectRoot)'); uvicorn.run('src.api.main:app', host='127.0.0.1', port=8000, log_level='warning')"
-        p.arguments = ["-u", "-c", pythonCmd]
+        p.currentDirectoryURL = URL(fileURLWithPath: userDataPath)
+        p.arguments = ["-u", launcherPath]
 
-        let logDir = "\(projectRoot)/logs"
+        var env = ProcessInfo.processInfo.environment
+        env["DEATHBYJOBS_RESOURCE_DIR"] = bundleResourcePath
+        env["DEATHBYJOBS_DATA_DIR"] = userDataPath
+        env["DEATHBYJOBS_PYTHON_ROOT"] = bundleResourcePath + "/python"
+        env["PLAYWRIGHT_BROWSERS_PATH"] = bundleResourcePath + "/playwright-browsers"
+        p.environment = env
+
+        let logDir = "\(userDataPath)/logs"
         try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
         let logPath = "\(logDir)/app_launch.log"
         FileManager.default.createFile(atPath: logPath, contents: nil)
@@ -413,8 +436,8 @@ class BackendManager {
             return
         }
 
-        // Wait up to ~10 seconds for the server to respond
-        for _ in 0..<20 {
+        // Wait up to ~15 seconds for the server to respond
+        for _ in 0..<30 {
             if await backendIsReachable() { return }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
@@ -437,16 +460,8 @@ class BackendManager {
         sh.waitUntilExit()
     }
 
-    private func findPythonPath() -> String {
-        let customPath = "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
-        if FileManager.default.fileExists(atPath: customPath) { return customPath }
-        let commonPaths = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]
-        for path in commonPaths { if FileManager.default.fileExists(atPath: path) { return path } }
-        return "python3"
-    }
-
     private func lockFilePath() -> String {
-        "\(projectRoot)/app.lock"
+        "\(userDataPath)/app.lock"
     }
 
     private func lockFileExistsWithLiveProcess() -> Bool {
@@ -487,7 +502,6 @@ class BackendManager {
 
     /// Synchronous pipeline-running check used during app termination.
     func pipelineIsRunningNow() -> Bool {
-        // Prefer the API's own view of status.
         guard let statusUrl = URL(string: "http://127.0.0.1:8000/status") else { return lockFileExistsWithLiveProcess() }
         var request = URLRequest(url: statusUrl)
         request.timeoutInterval = 1.5
@@ -1108,8 +1122,7 @@ struct LogoView: View {
     private var logoImage: NSImage? {
         // Try the app bundle Resources first, then fall back to the project root.
         let candidates = [
-            Bundle.main.url(forResource: "logo", withExtension: "png"),
-            URL(fileURLWithPath: "/Users/bitanbanerjee/Coding/GitHub_Repos/AiAutomation/logo.png")
+            Bundle.main.url(forResource: "logo", withExtension: "png")
         ]
         for url in candidates.compactMap({ $0 }) {
             if let image = NSImage(contentsOf: url) { return image }
@@ -2648,7 +2661,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-struct AiAutomationApp: App {
+struct DeathByJobsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -2660,4 +2673,4 @@ struct AiAutomationApp: App {
     }
 }
 
-// Entry point is in mac/main.swift: AiAutomationApp.main()
+// Entry point is in mac/main.swift: DeathByJobsApp.main()

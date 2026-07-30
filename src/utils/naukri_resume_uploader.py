@@ -63,13 +63,7 @@ def upload_resume():
                 # Wait for upload completion indicators
                 print("⏳ Waiting for upload to complete...")
                 time.sleep(10)
-                
-                # Capture evidence
-                ss_path = os.path.join(BASE_DIR, 'logs', 'screenshots', 'naukri_resume_upload_result.png')
-                os.makedirs(os.path.dirname(ss_path), exist_ok=True)
-                page.screenshot(path=ss_path)
-                print(f"📸 Result screenshot saved: {ss_path}")
-                
+
                 # Check for success message or updated date
                 success_keywords = ["successfully", "updated", "just now", "today"]
                 body_text = page.evaluate("() => document.body.innerText.toLowerCase()")
@@ -77,7 +71,7 @@ def upload_resume():
                     print("✅ Resume uploaded successfully!")
                     return True
                 else:
-                    print("⚠️ Upload finished but success message not detected. Check screenshot.")
+                    print("⚠️ Upload finished but success message not detected.")
                     return True
             else:
                 print("❌ Could not find resume upload input.")

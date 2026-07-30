@@ -26,7 +26,7 @@ except ImportError:
         # Fallback if import fails
         return {}
 
-# Identify project root (AiAutomation/)
+# Identify project root (DeathByJobs/)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 MATCHED_PATH = os.path.join(BASE_DIR, 'data', 'naukri_matched_jobs.json')

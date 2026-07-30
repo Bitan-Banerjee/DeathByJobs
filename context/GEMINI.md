@@ -31,7 +31,7 @@
   - Success indicator: green "Applied" button.
 
 ## 📱 Social Media
-- **X:** 2 hashtags (#BuildInPublic, #AIAutomation).
+- **X:** 2 hashtags (#BuildInPublic, #DeathByJobs).
 - **LinkedIn:** 3-5 hashtags. Suggest @mentions.
 - **Opt:** Professional, engaging. No generic tags.
 
@@ -69,7 +69,7 @@ Iterated for Speed, Accuracy, Cost.
 4. **Sourcing:** Phrase match, relevance gate, applicant cap (<100).
 5. **Orchestrator:** `main.py` loop until 50 apps.
 6. **Quarantine:** `failed_applications.json`.
-7. **Cleanup:** Root at `/AiAutomation/`.
+7. **Cleanup:** Root at `/DeathByJobs/`.
 8. **Naukri Integration:** `naukri_scraper.py`, `naukri_auto_apply.py`.
 9. **Multi-Key Router:** Gemini API key fallback.
 10. **Static Logger:** `latest_run.md`.
