@@ -624,7 +624,11 @@ class PipelineViewModel: ObservableObject {
     func checkOnboardingStatus() async {
         do {
             let (data, response) = try await URLSession.shared.data(from: URL(string: "\(baseUrl)/onboarding/status")!)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                onboardingConfigured = false
+                onboardingCheckComplete = true
+                return
+            }
             let decoded = try JSONDecoder().decode(OnboardingStatusResponse.self, from: data)
             onboardingConfigured = decoded.configured
         } catch {
