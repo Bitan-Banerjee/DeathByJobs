@@ -585,7 +585,7 @@ class PipelineViewModel: ObservableObject {
     @Published var maxLoops: Int = 4
     @Published var mode: String = "quota"
     @Published var errorMessage: String? = nil
-    @Published var onboardingConfigured: Bool = true
+    @Published var onboardingConfigured: Bool = false
     @Published var onboardingCheckComplete: Bool = false
     @Published var currentConfig: ConfigResponse? = nil
     @Published var currentStage: Int = -1
@@ -619,7 +619,7 @@ class PipelineViewModel: ObservableObject {
             let decoded = try JSONDecoder().decode(OnboardingStatusResponse.self, from: data)
             onboardingConfigured = decoded.configured
         } catch {
-            onboardingConfigured = true
+            onboardingConfigured = false
         }
         onboardingCheckComplete = true
     }

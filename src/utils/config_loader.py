@@ -18,17 +18,17 @@ PROVIDERS_PATH = CONFIG_DIR / "providers.json"
 DEFAULT_PROFILE = {
     "candidate": {"name": "", "email": ""},
     "target_profile": {
-        "role": "Data Engineer",
-        "experience_years": 4,
-        "experience_range": "0 to 5 years",
-        "notice_period": "30 days",
+        "role": "",
+        "experience_years": 0,
+        "experience_range": "",
+        "notice_period": "",
         "serving_notice": False,
-        "core_skills": ["Python", "SQL", "PySpark", "AWS"],
+        "core_skills": [],
     },
     "search": {
-        "linkedin_keyword": "Data Engineer",
-        "naukri_keyword": "Data Engineer",
-        "location": "India",
+        "linkedin_keyword": "",
+        "naukri_keyword": "",
+        "location": "",
     },
     "filters": {
         "match_variance": "moderate",
@@ -45,7 +45,7 @@ DEFAULT_PROFILE = {
                 "redshift", "rds", "warehouse", "airflow", "big data", "bigdata"
             ],
         },
-        "company": {"excluded": ["Turing"], "current_employer": ""},
+        "company": {"excluded": [], "current_employer": ""},
         "applicants": {"max": 100},
         "dealbreakers": [
             "DB1: Job strictly requires MORE than 5 years of experience.",
@@ -56,11 +56,11 @@ DEFAULT_PROFILE = {
         ],
     },
     "application": {
-        "experience_years": 4,
+        "experience_years": 0,
         "availability": {
-            "morning": "Before 11:00 AM",
-            "afternoon": "2:00 PM - 4:30 PM",
-            "evening": "After 7:00 PM",
+            "morning": "",
+            "afternoon": "",
+            "evening": "",
         },
         "analogous_skills": {
             "Azure": "AWS",
